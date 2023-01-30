@@ -36,11 +36,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("connect to GANCube...");
     let gancube = builder.connect().await?;
-
-    let mut cuboard = CuboardInputHandler::new();
-    let handle = gancube
-        .register_handler(Box::new(move |msg| cuboard.handle_message(msg)))
-        .await?;
     println!("connected! have fun~");
     println!();
 
@@ -56,8 +51,12 @@ myth flow gasp | MYTH FLOW GASP | 1234 .:'! ⌴0zq | 5678 ,;"? ↵9ZQ
     println!("{}", cheatsheet);
     println!();
 
+    let mut cuboard = CuboardInputHandler::new();
+    let handle = gancube
+        .register_handler(Box::new(move |msg| cuboard.handle_message(msg)))
+        .await?;
+
     gancube.subscribe_response().await?;
-    gancube.request_battery_state().await?;
     gancube.request_cube_state().await?;
 
     handle.await?;
@@ -112,15 +111,19 @@ impl CuboardInputHandler {
     }
 
     fn handle_message(&mut self, msg: ResponseMessage) {
+        if self.count.is_none() {
+            if let ResponseMessage::State { count, state: _ } = msg {
+                self.count = Some(count);
+            }
+            return;
+        }
+
         if let ResponseMessage::Moves {
             count,
             moves,
             times: _,
         } = msg
         {
-            if self.count.is_none() {
-                self.count = Some(count.wrapping_add_signed(-1));
-            }
             let curr_count = self.count.unwrap();
             let diff = {
                 let delta = count.wrapping_add(curr_count.wrapping_neg());
