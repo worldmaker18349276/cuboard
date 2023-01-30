@@ -42,9 +42,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("{}", DEFAULT_CHEATSHEET);
     println!();
 
-    let mut cuboard = CuboardInputHandler::new();
+    let mut input_handler = CuboardInputPrinter::new();
     let handle = gancube
-        .register_handler(Box::new(move |msg| cuboard.handle_message(msg)))
+        .register_handler(Box::new(move |msg| input_handler.handle_message(msg)))
         .await?;
 
     gancube.subscribe_response().await?;
@@ -55,7 +55,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-struct CuboardInputHandler {
+struct CuboardInput {
     cuboard: Cuboard,
     keymap: [[[&'static str; 4]; 12]; 2],
     count: Option<u8>,
@@ -101,64 +101,12 @@ const DEFAULT_CHEATSHEET: &str = r#"cheat sheet:
       VERB      |      verb      |      @$&`      |      #%~_
 "#;
 
-impl CuboardInputHandler {
+impl CuboardInput {
     fn new() -> Self {
-        CuboardInputHandler {
+        CuboardInput {
             cuboard: Cuboard::new(),
             keymap: DEFAULT_KEYMAP,
             count: None,
-        }
-    }
-
-    fn handle_message(&mut self, msg: ResponseMessage) {
-        if self.count.is_none() {
-            if let ResponseMessage::State { count, state: _ } = msg {
-                self.count = Some(count);
-            }
-            return;
-        }
-
-        if let ResponseMessage::Moves {
-            count,
-            moves,
-            times: _,
-        } = msg
-        {
-            let curr_count = self.count.unwrap();
-            let diff = {
-                let delta = count.wrapping_add(curr_count.wrapping_neg());
-                let delta_ = delta.wrapping_neg();
-                delta.min(delta_) as usize
-            };
-            self.count = Some(count);
-            if diff > 7 {
-                eprintln!("unsynchronized cube movement");
-            }
-
-            for &mv in moves[..diff].iter().rev() {
-                match mv {
-                    Some(mv) => {
-                        self.cuboard.input(mv);
-                    }
-                    None => {
-                        eprintln!("unknown cube movement");
-                    }
-                };
-            }
-
-            const CREL: &str = "\r\x1b[2K";
-            let text = self.complete_part();
-            if text.contains('\n') {
-                print!("{}{}", CREL, text);
-                self.cuboard.finish();
-            }
-            print!(
-                "{}\x1b[4m{}\x1b[2m{}\x1b[m",
-                CREL,
-                self.complete_part(),
-                self.remain_part()
-            );
-            let _ = std::io::Write::flush(&mut std::io::stdout());
         }
     }
 
@@ -172,5 +120,67 @@ impl CuboardInputHandler {
 
     fn remain_part(&self) -> String {
         format_moves(self.cuboard.remains())
+    }
+}
+
+struct CuboardInputPrinter {
+    input: CuboardInput,
+}
+
+impl CuboardInputPrinter {
+    fn new() -> Self {
+        CuboardInputPrinter { input: CuboardInput::new() }
+    }
+
+    fn handle_message(&mut self, msg: ResponseMessage) {
+        if self.input.count.is_none() {
+            if let ResponseMessage::State { count, state: _ } = msg {
+                self.input.count = Some(count);
+            }
+            return;
+        }
+
+        if let ResponseMessage::Moves {
+            count,
+            moves,
+            times: _,
+        } = msg
+        {
+            let curr_count = self.input.count.unwrap();
+            let diff = {
+                let delta = count.wrapping_add(curr_count.wrapping_neg());
+                let delta_ = delta.wrapping_neg();
+                delta.min(delta_) as usize
+            };
+            self.input.count = Some(count);
+            if diff > 7 {
+                eprintln!("unsynchronized cube movement");
+            }
+
+            for &mv in moves[..diff].iter().rev() {
+                match mv {
+                    Some(mv) => {
+                        self.input.cuboard.input(mv);
+                    }
+                    None => {
+                        eprintln!("unknown cube movement");
+                    }
+                };
+            }
+
+            const CREL: &str = "\r\x1b[2K";
+            let text = self.input.complete_part();
+            if text.contains('\n') {
+                print!("{}{}", CREL, text);
+                self.input.cuboard.finish();
+            }
+            print!(
+                "{}\x1b[4m{}\x1b[2m{}\x1b[m",
+                CREL,
+                self.input.complete_part(),
+                self.input.remain_part()
+            );
+            let _ = std::io::Write::flush(&mut std::io::stdout());
+        }
     }
 }
