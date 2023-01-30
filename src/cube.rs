@@ -351,7 +351,7 @@ impl From<CubeState> for CubeStateRaw {
 }
 
 #[rustfmt::skip]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 #[repr(u8)]
 pub enum CubeMove {
     U, Up, R, Rp, F, Fp, D, Dp, L, Lp, B, Bp
@@ -397,5 +397,68 @@ impl TryFrom<u8> for CubeMove {
             11 => Ok(CubeMove::Bp),
             _ => Err(()),
         }
+    }
+}
+
+impl CubeMove {
+    pub fn rev(self) -> Self {
+        match self {
+            CubeMove::U => CubeMove::Up,
+            CubeMove::Up => CubeMove::U,
+            CubeMove::R => CubeMove::Rp,
+            CubeMove::Rp => CubeMove::R,
+            CubeMove::F => CubeMove::Fp,
+            CubeMove::Fp => CubeMove::F,
+            CubeMove::D => CubeMove::Dp,
+            CubeMove::Dp => CubeMove::D,
+            CubeMove::L => CubeMove::Lp,
+            CubeMove::Lp => CubeMove::L,
+            CubeMove::B => CubeMove::Bp,
+            CubeMove::Bp => CubeMove::B,
+        }
+    }
+
+    pub fn abs(self) -> Self {
+        match self {
+            CubeMove::U | CubeMove::Up => CubeMove::U,
+            CubeMove::R | CubeMove::Rp => CubeMove::R,
+            CubeMove::F | CubeMove::Fp => CubeMove::F,
+            CubeMove::D | CubeMove::Dp => CubeMove::D,
+            CubeMove::L | CubeMove::Lp => CubeMove::L,
+            CubeMove::B | CubeMove::Bp => CubeMove::B,
+        }
+    }
+
+    pub fn mirror(self) -> Self {
+        match self {
+            CubeMove::U => CubeMove::Dp,
+            CubeMove::Up => CubeMove::D,
+            CubeMove::R => CubeMove::Lp,
+            CubeMove::Rp => CubeMove::L,
+            CubeMove::F => CubeMove::Bp,
+            CubeMove::Fp => CubeMove::B,
+            CubeMove::D => CubeMove::Up,
+            CubeMove::Dp => CubeMove::U,
+            CubeMove::L => CubeMove::Rp,
+            CubeMove::Lp => CubeMove::R,
+            CubeMove::B => CubeMove::Fp,
+            CubeMove::Bp => CubeMove::F,
+        }
+    }
+
+    pub fn commute(self, other: Self) -> bool {
+        matches!(
+            (self, other),
+            (
+                CubeMove::U | CubeMove::Up | CubeMove::D | CubeMove::Dp,
+                CubeMove::U | CubeMove::Up | CubeMove::D | CubeMove::Dp
+            ) | (
+                CubeMove::R | CubeMove::Rp | CubeMove::L | CubeMove::Lp,
+                CubeMove::R | CubeMove::Rp | CubeMove::L | CubeMove::Lp
+            ) | (
+                CubeMove::F | CubeMove::Fp | CubeMove::B | CubeMove::Bp,
+                CubeMove::F | CubeMove::Fp | CubeMove::B | CubeMove::Bp
+            )
+        )
     }
 }
