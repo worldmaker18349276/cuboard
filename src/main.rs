@@ -1,5 +1,6 @@
 use btleplug::api::{Central, Manager, ScanFilter};
 use btleplug::platform;
+use cube::format_moves;
 use std::error::Error;
 
 use bluetooth::gancubev2::{GanCubeV2Builder, ResponseMessage};
@@ -92,14 +93,13 @@ const DEFAULT_KEYMAP: [[[&str; 4]; 12]; 2] = [
 ];
 
 const DEFAULT_CHEATSHEET: &str = r#"cheat sheet:
-       1       |        2       |       -1       |       -2
----------------|----------------|----------------|----------------
-     duck      |      DUCK      |      ([{<      |      )]}>
-myth flow gasp | MYTH FLOW GASP | 1234 .:'! ⌴0zq | 5678 ,;"? ↵9ZQ
-     jinx      |      JINX      |      +-*/      |      =|^\
-     verb      |      VERB      |      @$&`      |      #%~_
+        2       |        1       |       -1       |       -2
+----------------|----------------|----------------|----------------
+      DUCK      |      duck      |      ([{<      |      )]}>
+ MYTH FLOW GASP | myth flow gasp | 1234 .:'! ⌴0zq | 5678 ,;"? ↵9ZQ
+      JINX      |      jinx      |      +-*/      |      =|^\
+      VERB      |      verb      |      @$&`      |      #%~_
 "#;
-
 
 impl CuboardInputHandler {
     fn new() -> Self {
@@ -161,9 +161,7 @@ impl CuboardInputHandler {
             let _ = std::io::Write::flush(&mut std::io::stdout());
         }
     }
-}
 
-impl CuboardInputHandler {
     fn complete_part(&self) -> String {
         self.cuboard
             .keys()
@@ -173,10 +171,6 @@ impl CuboardInputHandler {
     }
 
     fn remain_part(&self) -> String {
-        self.cuboard
-            .remains()
-            .iter()
-            .map(|mv| mv.to_string())
-            .collect()
+        format_moves(self.cuboard.remains())
     }
 }

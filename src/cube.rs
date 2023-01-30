@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::{
     fmt::Display,
     iter::Sum,
@@ -461,4 +463,39 @@ impl CubeMove {
             )
         )
     }
+}
+
+pub fn format_moves(moves: &[CubeMove]) -> String {
+    if moves.is_empty() {
+        return "".to_string();
+    }
+    let mut res = String::new();
+    let mut curr = moves[0];
+    let mut count = 0;
+
+    const NAMES: [&str; 12] = [
+        "U", "U'", "R", "R'", "F", "F'", "D", "D'", "L", "L'", "B", "B'",
+    ];
+
+    for mv in moves {
+        if mv == &curr {
+            count += 1;
+        } else {
+            let name = NAMES[curr as u8 as usize];
+            res += name;
+            if count > 1 {
+                res += &count.to_string();
+            }
+            curr = *mv;
+            count = 1;
+        }
+    }
+
+    let name = NAMES[curr as u8 as usize];
+    res += name;
+    if count > 1 {
+        res += &count.to_string();
+    }
+
+    res
 }
