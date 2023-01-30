@@ -1,7 +1,6 @@
 use btleplug::api::{Central, Manager, ScanFilter};
 use btleplug::platform;
 use std::error::Error;
-use std::fmt::Display;
 
 use bluetooth::gancubev2::{GanCubeV2Builder, ResponseMessage};
 
@@ -39,16 +38,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("connected! have fun~");
     println!();
 
-    let cheatsheet = r#"cheat sheet:
-       1       |        2       |       -1       |       -2
----------------|----------------|----------------|----------------
-     duck      |      DUCK      |      ([{<      |      )]}>
-myth flow gasp | MYTH FLOW GASP | 1234 .:'! ⌴0zq | 5678 ,;"? ↵9ZQ
-     jinx      |      JINX      |      -~/_      |      +=\|
-     verb      |      VERB      |      @$&`      |      #%*^
-    "#;
-
-    println!("{}", cheatsheet);
+    println!("{}", DEFAULT_CHEATSHEET);
     println!();
 
     let mut cuboard = CuboardInputHandler::new();
@@ -79,7 +69,7 @@ const DEFAULT_KEYMAP: [[[&str; 4]; 12]; 2] = [
         ["f", "l", "o", "w"],
         [".", ":", "'", "!"],
         ["j", "i", "n", "x"],
-        ["-", "~", "/", "_"],
+        ["+", "-", "*", "/"],
         ["m", "y", "t", "h"],
         ["1", "2", "3", "4"],
         ["v", "e", "r", "b"],
@@ -93,13 +83,23 @@ const DEFAULT_KEYMAP: [[[&str; 4]; 12]; 2] = [
         ["F", "L", "O", "W"],
         [",", ";", "\"", "?"],
         ["J", "I", "N", "X"],
-        ["+", "=", "\\", "|"],
+        ["=", "|", "^", "\\"],
         ["M", "Y", "T", "H"],
         ["5", "6", "7", "8"],
         ["V", "E", "R", "B"],
-        ["#", "%", "*", "^"],
+        ["#", "%", "~", "_"],
     ],
 ];
+
+const DEFAULT_CHEATSHEET: &str = r#"cheat sheet:
+       1       |        2       |       -1       |       -2
+---------------|----------------|----------------|----------------
+     duck      |      DUCK      |      ([{<      |      )]}>
+myth flow gasp | MYTH FLOW GASP | 1234 .:'! ⌴0zq | 5678 ,;"? ↵9ZQ
+     jinx      |      JINX      |      +-*/      |      =|^\
+     verb      |      VERB      |      @$&`      |      #%~_
+"#;
+
 
 impl CuboardInputHandler {
     fn new() -> Self {
