@@ -44,7 +44,59 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("connected! have fun~");
     println!();
 
-    println!("{}", DEFAULT_CHEATSHEET);
+    fn make_cheatsheet(keymap: [[[&'static str; 4]; 12]; 2]) -> String {
+        const STYLED_TEMPLATE: &str = "
+     \x1b[30;44m  {B.3}  \x1b[m     
+     \x1b[30;44m{B.2}   {B.0}\x1b[m     
+     \x1b[30;44m  {B.1}  \x1b[m     
+     \x1b[30;47m  {U.1}  \x1b[m     
+     \x1b[30;47m{U.0}   {U.2}\x1b[m     
+     \x1b[30;47m  {U.3}  \x1b[m     
+\x1b[30;45m  {L.3}  \x1b[42m  {F.0}  \x1b[41m  {R.2}  \x1b[m
+\x1b[30;45m{L.2}   {L.0}\x1b[42m{F.3}   {F.1}\x1b[41m{R.1}   {R.3}\x1b[m
+\x1b[30;45m  {L.1}  \x1b[42m  {F.2}  \x1b[41m  {R.0}  \x1b[m
+     \x1b[30;43m  {D.2}  \x1b[m     
+     \x1b[30;43m{D.1}   {D.3}\x1b[m     
+     \x1b[30;43m  {D.0}  \x1b[m     
+";
+        const STYLED_TEMPLATE_BAR: &str = "CHEAT SHEET:
+     double     |      single     |     single      |     double
+    clockwise   |     clockwise   |counter-clockwise|counter-clockwise
+----------------|-----------------|-----------------|-----------------
+";
+        use cube::CubeMove::*;
+        let mut a = STYLED_TEMPLATE.to_string();
+        let mut b = STYLED_TEMPLATE.to_string();
+        let mut c = STYLED_TEMPLATE.to_string();
+        let mut d = STYLED_TEMPLATE.to_string();
+
+        for side in [U, D, F, B, L, R] {
+            for i in 0..4 {
+                fn f(s: &str) -> String {
+                    s.replace('\n', "↵").replace(' ', "⌴")
+                }
+                let name = format!("{{{}.{}}}", &side.to_string()[0..1], i);
+                a = a.replace(&name, &f(keymap[1][side as u8 as usize][i]));
+                b = b.replace(&name, &f(keymap[0][side as u8 as usize][i]));
+                c = c.replace(&name, &f(keymap[0][side.rev() as u8 as usize][i]));
+                d = d.replace(&name, &f(keymap[1][side.rev() as u8 as usize][i]));
+            }
+        }
+
+        let a = a.trim_matches('\n').split('\n');
+        let b = b.trim_matches('\n').split('\n');
+        let c = c.trim_matches('\n').split('\n');
+        let d = d.trim_matches('\n').split('\n');
+        STYLED_TEMPLATE_BAR.to_string()
+            + &a.zip(b)
+                .zip(c)
+                .zip(d)
+                .map(|(((a, b), c), d)| [a, b, c, d].join(" | "))
+                .collect::<Vec<_>>()
+                .join("\n")
+    }
+
+    println!("{}", make_cheatsheet(DEFAULT_KEYMAP));
     println!();
 
     let input_handler: Box<dyn FnMut(ResponseMessage) + Send> =
@@ -104,16 +156,6 @@ const DEFAULT_KEYMAP: [[[&str; 4]; 12]; 2] = [
         ["#", "%", "~", "_"],
     ],
 ];
-
-const DEFAULT_CHEATSHEET: &str = r#"cheat sheet:
-        2       |        1       |       -1       |       -2
-----------------|----------------|----------------|----------------
-      VERB      |      verb      |      @$&`      |      #%~_
-      DUCK      |      duck      |      ([{<      |      )]}>
- MYTH FLOW GASP | myth flow gasp | 1234 .:'! ⌴0zq | 5678 ,;"? ↵9ZQ
-      JINX      |      jinx      |      +-*/      |      =|^\
-      VERB      |      verb      |      @$&`      |      #%~_
-"#;
 
 impl CuboardInput {
     fn new() -> Self {
