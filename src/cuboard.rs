@@ -41,7 +41,7 @@ impl CuboardKey {
         loop {
             let (adj, main, is_shifted) = match value[start..] {
                 [a, a_, b, ..] if a == a_ && a != b => (a.abs(), b, true),
-                [a, b] if a != b => (a.abs(), b, false),
+                [a, b, ..] if a != b => (a.abs(), b, false),
                 _ => return res,
             };
             let order = &KEYS_ORDER[main as u8 as usize];
