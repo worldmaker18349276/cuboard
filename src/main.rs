@@ -123,12 +123,18 @@ impl CuboardInput {
         }
     }
 
-    fn complete_part(&self) -> String {
+    fn text(&self) -> String {
         self.cuboard
             .keys()
             .iter()
             .map(|k| self.keymap[k.0.is_shifted as usize][k.0.main as u8 as usize][k.0.num])
             .collect()
+    }
+
+    fn complete_part(&self) -> String {
+        let moves = self.cuboard.moves();
+        let complete = &moves[..moves.len() - self.cuboard.remains().len()];
+        format_moves(complete)
     }
 
     fn remain_part(&self) -> String {
@@ -149,9 +155,9 @@ impl CuboardInputPrinter {
         if self.input.count.is_none() {
             if let ResponseMessage::State { count, state: _ } = msg {
                 self.input.count = Some(count);
+                print!("\r\x1b[7m \x1b[m\n\x1b[100m\x1b[2K\x1b[m");
+                let _ = std::io::Write::flush(&mut std::io::stdout());
             }
-            print!("\x1b[100m\r\x1b[2K\r");
-            let _ = std::io::Write::flush(&mut std::io::stdout());
             return;
         }
 
@@ -183,16 +189,28 @@ impl CuboardInputPrinter {
                 };
             }
 
-            let text = self.input.complete_part();
+            let text = self.input.text();
+            print!("\x1b[A\r\x1b[2K{}\x1b[K\x1b[0;7m \x1b[m\n", text);
             if text.contains('\n') {
-                print!("\r\x1b[2K{}", text);
                 self.input.cuboard.finish();
             }
-            print!(
-                "\r\x1b[100m\x1b[2K\x1b[4m{}\x1b[2m{}\x1b[m\r",
-                self.input.complete_part(),
-                self.input.remain_part()
-            );
+
+            let complete_part = self.input.complete_part();
+            let remain_part = self.input.remain_part();
+            const MAX_LEN: usize = 12;
+            if complete_part.len() + remain_part.len() > MAX_LEN {
+                let overflow = complete_part.len() + remain_part.len() - MAX_LEN;
+                print!(
+                    "\r\x1b[100m\x1b[2K…\x1b[4m{}\x1b[2m{}\x1b[m",
+                    &complete_part[overflow + 1..],
+                    remain_part,
+                );
+            } else {
+                print!(
+                    "\r\x1b[100m\x1b[2K\x1b[4m{}\x1b[2m{}\x1b[m",
+                    complete_part, remain_part,
+                );
+            }
             let _ = std::io::Write::flush(&mut std::io::stdout());
         }
     }
@@ -257,7 +275,7 @@ impl<T: Iterator<Item = String>, const N: usize> CuboardInputTrainer<T, N> {
                 println!("\r\x1b[2m\x1b[2K{}\x1b[m", line);
             }
 
-            let text = self.input.complete_part();
+            let text = self.input.text();
             let decoreated_text: String = text
                 .trim_end_matches('\n')
                 .chars()
@@ -290,11 +308,22 @@ impl<T: Iterator<Item = String>, const N: usize> CuboardInputTrainer<T, N> {
                 self.lines[N - 1] = new_line;
             }
 
-            print!(
-                "\r\x1b[100m\x1b[2K\x1b[4m{}\x1b[2m{}\x1b[m\r",
-                self.input.complete_part(),
-                self.input.remain_part(),
-            );
+            let complete_part = self.input.complete_part();
+            let remain_part = self.input.remain_part();
+            const MAX_LEN: usize = 12;
+            if complete_part.len() + remain_part.len() > MAX_LEN {
+                let overflow = complete_part.len() + remain_part.len() - MAX_LEN;
+                print!(
+                    "\r\x1b[100m\x1b[2K…\x1b[4m{}\x1b[2m{}\x1b[m",
+                    &complete_part[overflow + 1..],
+                    remain_part,
+                );
+            } else {
+                print!(
+                    "\r\x1b[100m\x1b[2K\x1b[4m{}\x1b[2m{}\x1b[m",
+                    complete_part, remain_part,
+                );
+            }
             let _ = std::io::Write::flush(&mut std::io::stdout());
         }
     }
