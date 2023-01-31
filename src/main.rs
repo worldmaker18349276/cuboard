@@ -15,6 +15,9 @@ mod cuboard;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    let args: Vec<String> = std::env::args().collect();
+    let text_filename: Option<String> = args.get(1).cloned();
+
     // get the first bluetooth adapter
     let manager = platform::Manager::new().await.unwrap();
     let adapters = manager.adapters().await?;
@@ -44,14 +47,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("{}", DEFAULT_CHEATSHEET);
     println!();
 
-    // let mut input_handler = CuboardInputPrinter::new(CuboardInput::new());
-    let text = BufReader::new(File::open("test.txt")?)
-        .lines()
-        .map(|l| l.unwrap());
-    let mut input_handler = CuboardInputTrainer::<_, 3>::new(CuboardInput::new(), text);
-    let handle = gancube
-        .register_handler(Box::new(move |msg| input_handler.handle_message(msg)))
-        .await?;
+    let input_handler: Box<dyn FnMut(ResponseMessage) + Send> =
+        if let Some(text_filename) = text_filename {
+            let text = BufReader::new(File::open(text_filename)?)
+                .lines()
+                .map(|l| l.unwrap());
+            let mut trainer = CuboardInputTrainer::<_, 3>::new(CuboardInput::new(), text);
+            Box::new(move |msg| trainer.handle_message(msg))
+        } else {
+            let mut printer = CuboardInputPrinter::new(CuboardInput::new());
+            Box::new(move |msg| printer.handle_message(msg))
+        };
+    let handle = gancube.register_handler(input_handler).await?;
 
     gancube.subscribe_response().await?;
     gancube.request_cube_state().await?;
@@ -143,6 +150,8 @@ impl CuboardInputPrinter {
             if let ResponseMessage::State { count, state: _ } = msg {
                 self.input.count = Some(count);
             }
+            print!("\x1b[100m\r\x1b[2K\r");
+            let _ = std::io::Write::flush(&mut std::io::stdout());
             return;
         }
 
@@ -174,15 +183,13 @@ impl CuboardInputPrinter {
                 };
             }
 
-            const CREL: &str = "\r\x1b[2K";
             let text = self.input.complete_part();
             if text.contains('\n') {
-                print!("{}{}", CREL, text);
+                print!("\r\x1b[2K{}", text);
                 self.input.cuboard.finish();
             }
             print!(
-                "{}\x1b[4m{}\x1b[2m{}\x1b[m",
-                CREL,
+                "\r\x1b[100m\x1b[2K\x1b[4m{}\x1b[2m{}\x1b[m\r",
                 self.input.complete_part(),
                 self.input.remain_part()
             );
