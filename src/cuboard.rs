@@ -24,16 +24,16 @@ impl CuboardKey {
             [
                 [L, B, R, F], // U
                 [L, B, R, F], // Up
-                [U, B, D, F], // R
-                [U, B, D, F], // Rp
+                [D, F, U, B], // R
+                [D, F, U, B], // Rp
                 [U, R, D, L], // F
                 [U, R, D, L], // Fp
-                [F, R, B, L], // D
-                [F, R, B, L], // Dp
+                [B, L, F, R], // D
+                [B, L, F, R], // Dp
                 [F, D, B, U], // L
                 [F, D, B, U], // Lp
-                [L, D, R, U], // B
-                [L, D, R, U], // Bp
+                [R, U, L, D], // B
+                [R, U, L, D], // Bp
             ]
         };
 
