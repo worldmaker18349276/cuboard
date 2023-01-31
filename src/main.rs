@@ -108,6 +108,7 @@ const DEFAULT_KEYMAP: [[[&str; 4]; 12]; 2] = [
 const DEFAULT_CHEATSHEET: &str = r#"cheat sheet:
         2       |        1       |       -1       |       -2
 ----------------|----------------|----------------|----------------
+      VERB      |      verb      |      @$&`      |      #%~_
       DUCK      |      duck      |      ([{<      |      )]}>
  MYTH FLOW GASP | myth flow gasp | 1234 .:'! ⌴0zq | 5678 ,;"? ↵9ZQ
       JINX      |      jinx      |      +-*/      |      =|^\
