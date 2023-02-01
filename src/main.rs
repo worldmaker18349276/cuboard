@@ -211,11 +211,7 @@ impl CuboardInputPrinter {
         } = msg
         {
             let curr_count = self.input.count.unwrap();
-            let diff = {
-                let delta = count.wrapping_add(curr_count.wrapping_neg());
-                let delta_ = delta.wrapping_neg();
-                delta.min(delta_) as usize
-            };
+            let diff = count.wrapping_sub(curr_count) as usize;
             self.input.count = Some(count);
             if diff > 7 {
                 eprintln!("unsynchronized cube movement");
