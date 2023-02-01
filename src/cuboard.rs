@@ -18,33 +18,33 @@ pub struct CuboardKey {
 }
 
 impl CuboardKey {
-    fn parse(value: &[CubeMove], mut start: usize) -> Vec<(Self, Range<usize>)> {
-        const KEYS_ORDER: [[CubeMove; 4]; 12] = {
-            use CubeMove::*;
-            [
-                [L, B, R, F], // U
-                [L, B, R, F], // Up
-                [D, F, U, B], // R
-                [D, F, U, B], // Rp
-                [U, R, D, L], // F
-                [U, R, D, L], // Fp
-                [B, L, F, R], // D
-                [B, L, F, R], // Dp
-                [F, D, B, U], // L
-                [F, D, B, U], // Lp
-                [R, U, L, D], // B
-                [R, U, L, D], // Bp
-            ]
-        };
+    const KEYS: [[CubeMove; 4]; 12] = {
+        use CubeMove::*;
+        [
+            [L, B, R, F], // U
+            [L, B, R, F], // Up
+            [D, F, U, B], // R
+            [D, F, U, B], // Rp
+            [U, R, D, L], // F
+            [U, R, D, L], // Fp
+            [B, L, F, R], // D
+            [B, L, F, R], // Dp
+            [F, D, B, U], // L
+            [F, D, B, U], // Lp
+            [R, U, L, D], // B
+            [R, U, L, D], // Bp
+        ]
+    };
 
-        let mut res = vec![];
+    fn parse(value: &[CubeMove], mut start: usize) -> Vec<(Self, Range<usize>)> {
+        let mut res = Vec::new();
         loop {
             let (adj, main, is_shifted) = match value[start..] {
                 [a, a_, b, ..] if a == a_ && a != b => (a.abs(), b, true),
                 [a, b, ..] if a != b => (a.abs(), b, false),
                 _ => return res,
             };
-            let order = &KEYS_ORDER[main as u8 as usize];
+            let order = &Self::KEYS[main as u8 as usize];
             let Some(num) = order.iter().position(|a| adj == *a) else {
                 return res;
             };
@@ -98,10 +98,9 @@ impl Cuboard {
     }
 
     pub fn finish(&mut self) -> Vec<CuboardKey> {
-        let res = self.keys.iter().map(|k| k.0.clone()).collect();
         let chunk_end = self.keys.last().map_or(0, |k| k.1.end);
+        let res = self.keys.drain(..).map(|k| k.0).collect();
         self.moves.drain(..chunk_end);
-        self.keys.clear();
         res
     }
 

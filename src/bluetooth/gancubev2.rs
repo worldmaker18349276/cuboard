@@ -63,38 +63,23 @@ impl<P: Peripheral> GanCubeV2Builder<P> {
             self.device.connect().await?;
         }
         self.device.discover_services().await?;
+        let chars = self.device.characteristics();
 
-        let (response, request) = discover_characteristics(&self.device)?;
+        let Some(response) = chars.iter().find(|ch| ch.uuid == RESPONSE_UUID).cloned() else {
+            return Err(DeviceError::InvaidCharacteristics.into());
+        };
+
+        let Some(request) = chars.iter().find(|ch| ch.uuid == REQUEST_UUID).cloned() else {
+            return Err(DeviceError::InvaidCharacteristics.into());
+        };
+
         let cipher = cipher::GanCubeV2Cipher::make_cipher(&self.properties)?;
-        return Ok(GanCubeV2 {
+        Ok(GanCubeV2 {
             device: self.device.clone(),
             response,
             request,
             cipher,
-        });
-
-        fn discover_characteristics(
-            device: &impl Peripheral,
-        ) -> Result<(Characteristic, Characteristic), DeviceError> {
-            let chars = device.characteristics();
-
-            let mut response = None;
-            let mut request = None;
-
-            for cmd_char in chars {
-                if cmd_char.uuid == REQUEST_UUID {
-                    request = Some(cmd_char);
-                } else if cmd_char.uuid == RESPONSE_UUID {
-                    response = Some(cmd_char);
-                }
-            }
-
-            if response.is_none() || request.is_none() {
-                return Err(DeviceError::InvaidCharacteristics);
-            }
-
-            Ok((response.unwrap(), request.unwrap()))
-        }
+        })
     }
 }
 
@@ -207,12 +192,15 @@ mod codec {
         }
     }
 
+    type Quaternion = (f32, f32, f32, f32);
+    type QuaternionP = (f32, f32, f32);
+
     pub enum ResponseMessage {
         Gyroscope {
-            q1: (f32, f32, f32, f32),
-            q1p: (f32, f32, f32),
-            q2: (f32, f32, f32, f32),
-            q2p: (f32, f32, f32),
+            q1: Quaternion,
+            q1p: QuaternionP,
+            q2: Quaternion,
+            q2p: QuaternionP,
         },
         Moves {
             count: u8,
@@ -229,9 +217,11 @@ mod codec {
         },
     }
 
+    const CREL: &str = "\r\x1b[2K";
+
     impl ResponseMessage {
         pub fn decode(data: &[u8], cipher: &GanCubeV2Cipher) -> Result<Self, MessageParseError> {
-            let Ok(mut data): Result<[u8; 20], _> = data.try_into() else {
+            let Ok(mut data) = <[u8; 20]>::try_from(data) else {
                 return Err(MessageParseError::BadMessageLength(data.len()));
             };
 
@@ -244,158 +234,161 @@ mod codec {
             };
 
             let message = match message_type {
-                ResponseMessageType::Gyroscope => decode_gyroscope(&mut biter),
-                ResponseMessageType::CubeMoves => decode_cube_moves(&mut biter),
-                ResponseMessageType::CubeState => decode_cube_state(&mut biter, &data),
-                ResponseMessageType::BatteryState => decode_battery_state(&mut biter, &data),
+                ResponseMessageType::Gyroscope => Self::decode_gyroscope(&mut biter),
+                ResponseMessageType::CubeMoves => Self::decode_cube_moves(&mut biter),
+                ResponseMessageType::CubeState => Self::decode_cube_state(&mut biter),
+                ResponseMessageType::BatteryState => Self::decode_battery_state(&mut biter),
             };
 
-            return Ok(message);
+            Ok(message)
+        }
 
-            fn decode_gyroscope(biter: &mut Biter) -> ResponseMessage {
-                fn from_signed_u3(e: u32) -> f32 {
-                    const MAGNITUDE: f32 = (1 << 3) as f32;
-                    const MASK: u8 = 0b0111;
-                    let e = e as u8;
-                    let sign = if e & !MASK != 0 { -1 } else { 1 };
-                    let val = ((e & MASK) as i8) * sign;
-                    val as f32 / MAGNITUDE
-                }
-
-                fn from_signed_u15(e: u32) -> f32 {
-                    const MAGNITUDE: f32 = (1 << 15) as f32;
-                    const MASK: u16 = 0b0111_1111_1111_1111;
-                    let e = e as u16;
-                    let sign = if e & !MASK != 0 { -1 } else { 1 };
-                    let val = ((e & MASK) as i16) * sign;
-                    val as f32 / MAGNITUDE
-                }
-
-                let scalar = from_signed_u15(biter.extract(16));
-                let red = from_signed_u15(biter.extract(16));
-                let blue = from_signed_u15(biter.extract(16));
-                let white = from_signed_u15(biter.extract(16));
-                let redp = from_signed_u3(biter.extract(4));
-                let bluep = from_signed_u3(biter.extract(4));
-                let whitep = from_signed_u3(biter.extract(4));
-                let q1 = (scalar, red, blue, white);
-                let q1p = (redp, bluep, whitep);
-
-                let scalar_ = from_signed_u15(biter.extract(16));
-                let red_ = from_signed_u15(biter.extract(16));
-                let blue_ = from_signed_u15(biter.extract(16));
-                let white_ = from_signed_u15(biter.extract(16));
-                let redp_ = from_signed_u3(biter.extract(4));
-                let bluep_ = from_signed_u3(biter.extract(4));
-                let whitep_ = from_signed_u3(biter.extract(4));
-                let q2 = (scalar_, red_, blue_, white_);
-                let q2p = (redp_, bluep_, whitep_);
-
-                let remains = biter.extract(4);
-                if remains != 0b1010 {
-                    eprintln!("bad remains data, possibly broken: {:1X}", remains);
-                }
-
-                ResponseMessage::Gyroscope { q1, q1p, q2, q2p }
+        fn decode_gyroscope(biter: &mut Biter) -> Self {
+            fn from_signed_u3(e: u32) -> f32 {
+                const MAGNITUDE: f32 = (1 << 3) as f32;
+                const MASK: u8 = 0b0111;
+                let e = e as u8;
+                let sign = if e & !MASK != 0 { -1 } else { 1 };
+                let val = ((e & MASK) as i8) * sign;
+                val as f32 / MAGNITUDE
             }
 
-            fn decode_cube_moves(biter: &mut Biter) -> ResponseMessage {
-                let count = biter.extract(8) as u8;
-                let mut moves = [None; 7];
-                for mv in moves.iter_mut() {
-                    *mv = CubeMove::try_from(biter.extract(5) as u8).ok();
-                }
-                let mut times = [0; 7];
-                for time in times.iter_mut() {
-                    *time = biter.extract(16);
-                }
-
-                let remains = biter.extract(1);
-                if remains != 0 {
-                    eprintln!("bad remains data, possibly broken: {:1X}", remains);
-                }
-
-                ResponseMessage::Moves {
-                    count,
-                    moves,
-                    times,
-                }
+            fn from_signed_u15(e: u32) -> f32 {
+                const MAGNITUDE: f32 = (1 << 15) as f32;
+                const MASK: u16 = 0b0111_1111_1111_1111;
+                let e = e as u16;
+                let sign = if e & !MASK != 0 { -1 } else { 1 };
+                let val = ((e & MASK) as i16) * sign;
+                val as f32 / MAGNITUDE
             }
 
-            fn decode_cube_state(biter: &mut Biter, data: &[u8; 20]) -> ResponseMessage {
-                let count = biter.extract(8) as u8;
+            let scalar = from_signed_u15(biter.extract(16));
+            let red = from_signed_u15(biter.extract(16));
+            let blue = from_signed_u15(biter.extract(16));
+            let white = from_signed_u15(biter.extract(16));
+            let redp = from_signed_u3(biter.extract(4));
+            let bluep = from_signed_u3(biter.extract(4));
+            let whitep = from_signed_u3(biter.extract(4));
+            let q1 = (scalar, red, blue, white);
+            let q1p = (redp, bluep, whitep);
 
-                let mut state = CubeStateRaw::default();
+            let scalar_ = from_signed_u15(biter.extract(16));
+            let red_ = from_signed_u15(biter.extract(16));
+            let blue_ = from_signed_u15(biter.extract(16));
+            let white_ = from_signed_u15(biter.extract(16));
+            let redp_ = from_signed_u3(biter.extract(4));
+            let bluep_ = from_signed_u3(biter.extract(4));
+            let whitep_ = from_signed_u3(biter.extract(4));
+            let q2 = (scalar_, red_, blue_, white_);
+            let q2p = (redp_, bluep_, whitep_);
 
-                for i in 0..7 {
-                    state.corners_position[i] = biter.extract(3) as u8;
-                }
-                state.corners_position[7] = (0..8)
-                    .into_iter()
-                    .find(|a| !state.corners_position[..7].contains(a))
-                    .unwrap();
-
-                for i in 0..7 {
-                    state.corners_orientation[i] = biter.extract(2) as u8;
-                }
-                state.corners_orientation[7] =
-                    (3 - state.corners_orientation[..7].iter().sum::<u8>() % 3) % 3;
-
-                for i in 0..11 {
-                    state.edges_position[i] = biter.extract(4) as u8;
-                }
-                state.edges_position[11] = (0..12)
-                    .into_iter()
-                    .find(|a| !state.edges_position[..11].contains(a))
-                    .unwrap();
-
-                for i in 0..11 {
-                    state.edges_orientation[i] = biter.extract(1) as u8;
-                }
-                state.edges_orientation[11] =
-                    (2 - state.edges_orientation[..11].iter().sum::<u8>() % 2) % 2;
-
-                let _unknown = biter.extract(10);
-
-                let remains = &data[14..];
-                if remains != [0; 6] {
-                    eprintln!("bad remains data, possibly broken: {:02X?}", remains);
-                }
-
-                ResponseMessage::State { count, state }
+            let remains = biter.extract(4);
+            if remains != 0b1010 {
+                eprintln!("bad remains data, possibly broken: {:1X}", remains);
             }
 
-            fn decode_battery_state(biter: &mut Biter, data: &[u8; 20]) -> ResponseMessage {
-                let charging = biter.extract(4) != 0;
-                let percentage = biter.extract(8);
-                let remains = &data[2..];
-                if remains != [0; 18] {
-                    eprintln!("bad remains data, possibly broken: {:02X?}", remains);
-                }
+            Self::Gyroscope { q1, q1p, q2, q2p }
+        }
 
-                ResponseMessage::Battery {
-                    charging,
-                    percentage,
-                }
+        fn decode_cube_moves(biter: &mut Biter) -> Self {
+            let count = biter.extract(8) as u8;
+            let moves: [Option<CubeMove>; 7] = (0..7)
+                .map(|_| CubeMove::try_from(biter.extract(5) as u8).ok())
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap();
+            let times: [u32; 7] = (0..7)
+                .map(|_| biter.extract(16))
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap();
+
+            let remains = biter.extract(1);
+            if remains != 0 {
+                eprintln!("bad remains data, possibly broken: {:1X}", remains);
+            }
+
+            Self::Moves {
+                count,
+                moves,
+                times,
+            }
+        }
+
+        fn decode_cube_state(biter: &mut Biter) -> Self {
+            let count = biter.extract(8) as u8;
+
+            let mut state = CubeStateRaw::default();
+
+            for i in 0..7 {
+                state.corners_position[i] = biter.extract(3) as u8;
+            }
+            state.corners_position[7] = (0..8)
+                .find(|a| !state.corners_position[..7].contains(a))
+                .unwrap();
+
+            for i in 0..7 {
+                state.corners_orientation[i] = biter.extract(2) as u8;
+            }
+            state.corners_orientation[7] =
+                (3 - state.corners_orientation[..7].iter().sum::<u8>() % 3) % 3;
+
+            for i in 0..11 {
+                state.edges_position[i] = biter.extract(4) as u8;
+            }
+            state.edges_position[11] = (0..12)
+                .find(|a| !state.edges_position[..11].contains(a))
+                .unwrap();
+
+            for i in 0..11 {
+                state.edges_orientation[i] = biter.extract(1) as u8;
+            }
+            state.edges_orientation[11] =
+                (2 - state.edges_orientation[..11].iter().sum::<u8>() % 2) % 2;
+
+            let _unknown = biter.extract(10);
+
+            let remains = (0..6).map(|_| biter.extract(8) as u8).collect::<Vec<_>>();
+            if remains != [0; 6] {
+                eprintln!("bad remains data, possibly broken: {:02X?}", remains);
+            }
+
+            Self::State { count, state }
+        }
+
+        fn decode_battery_state(biter: &mut Biter) -> Self {
+            let charging = biter.extract(4) != 0;
+            let percentage = biter.extract(8);
+            let remains = (0..18).map(|_| biter.extract(8) as u8).collect::<Vec<_>>();
+            if remains != [0; 18] {
+                eprintln!("bad remains data, possibly broken: {:02X?}", remains);
+            }
+
+            Self::Battery {
+                charging,
+                percentage,
             }
         }
 
         pub fn show(self) {
             match self {
-                ResponseMessage::Gyroscope { q1, q1p, q2, q2p } => show_gyroscope(q1, q1p, q2, q2p),
-                ResponseMessage::Moves {
+                Self::Gyroscope { q1, q1p, q2, q2p } => Self::show_gyroscope(q1, q1p, q2, q2p),
+                Self::Moves {
                     count,
                     moves,
                     times,
-                } => show_moves(count, moves, times),
-                ResponseMessage::State { count, state } => show_cube_state(count, state),
-                ResponseMessage::Battery {
+                } => Self::show_moves(count, moves, times),
+                Self::State { count, state } => Self::show_cube_state(count, state),
+                Self::Battery {
                     charging,
                     percentage,
-                } => show_battery_state(charging, percentage),
+                } => Self::show_battery_state(charging, percentage),
             }
+        }
 
-            const CREL: &str = "\r\x1b[2K";
+        fn show_gyroscope(q1: Quaternion, q1p: QuaternionP, q2: Quaternion, q2p: QuaternionP) {
+            const BAR_WIDTH: usize = 12;
+            const PBAR_WIDTH: usize = 2;
 
             fn draw_bar(value: f32, width: usize) -> String {
                 const TEMP: [&str; 9] = [" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"];
@@ -405,99 +398,89 @@ mod codec {
                     .collect()
             }
 
-            fn show_gyroscope(
-                q1: (f32, f32, f32, f32),
-                q1p: (f32, f32, f32),
-                q2: (f32, f32, f32, f32),
-                q2p: (f32, f32, f32),
-            ) {
-                const BAR_WIDTH: usize = 12;
-                const PBAR_WIDTH: usize = 2;
+            print!("{}gyroscope: ", CREL);
+            let abar = draw_bar((q1.0 + 1.0) / 2.0, BAR_WIDTH);
+            let bbar = draw_bar((q1.1 + 1.0) / 2.0, BAR_WIDTH);
+            let cbar = draw_bar((q1.2 + 1.0) / 2.0, BAR_WIDTH);
+            let dbar = draw_bar((q1.3 + 1.0) / 2.0, BAR_WIDTH);
+            let bpbar = draw_bar((q1p.0 + 1.0) / 2.0, PBAR_WIDTH);
+            let cpbar = draw_bar((q1p.1 + 1.0) / 2.0, PBAR_WIDTH);
+            let dpbar = draw_bar((q1p.2 + 1.0) / 2.0, PBAR_WIDTH);
+            print!(
+                "q=[\x1b[2m{}\x1b[0;31m{}\x1b[34m{}\x1b[37m{}\x1b[m], ",
+                abar, bbar, cbar, dbar
+            );
+            print!(
+                "q'=[\x1b[31m{}\x1b[34m{}\x1b[37m{}\x1b[m]",
+                bpbar, cpbar, dpbar
+            );
+            print!(" ; ");
 
-                print!("{}gyroscope: ", CREL);
-                let abar = draw_bar((q1.0 + 1.0) / 2.0, BAR_WIDTH);
-                let bbar = draw_bar((q1.1 + 1.0) / 2.0, BAR_WIDTH);
-                let cbar = draw_bar((q1.2 + 1.0) / 2.0, BAR_WIDTH);
-                let dbar = draw_bar((q1.3 + 1.0) / 2.0, BAR_WIDTH);
-                let bpbar = draw_bar((q1p.0 + 1.0) / 2.0, PBAR_WIDTH);
-                let cpbar = draw_bar((q1p.1 + 1.0) / 2.0, PBAR_WIDTH);
-                let dpbar = draw_bar((q1p.2 + 1.0) / 2.0, PBAR_WIDTH);
-                print!(
-                    "q=[\x1b[2m{}\x1b[0;31m{}\x1b[34m{}\x1b[37m{}\x1b[m], ",
-                    abar, bbar, cbar, dbar
-                );
-                print!(
-                    "q'=[\x1b[31m{}\x1b[34m{}\x1b[37m{}\x1b[m]",
-                    bpbar, cpbar, dpbar
-                );
-                print!(" ; ");
+            let abar_ = draw_bar((q2.0 + 1.0) / 2.0, BAR_WIDTH);
+            let bbar_ = draw_bar((q2.1 + 1.0) / 2.0, BAR_WIDTH);
+            let cbar_ = draw_bar((q2.2 + 1.0) / 2.0, BAR_WIDTH);
+            let dbar_ = draw_bar((q2.3 + 1.0) / 2.0, BAR_WIDTH);
+            let bpbar_ = draw_bar((q2p.0 + 1.0) / 2.0, PBAR_WIDTH);
+            let cpbar_ = draw_bar((q2p.1 + 1.0) / 2.0, PBAR_WIDTH);
+            let dpbar_ = draw_bar((q2p.2 + 1.0) / 2.0, PBAR_WIDTH);
+            print!(
+                "q=[\x1b[2m{}\x1b[0;31m{}\x1b[34m{}\x1b[37m{}\x1b[m], ",
+                abar_, bbar_, cbar_, dbar_
+            );
+            print!(
+                "q'=[\x1b[31m{}\x1b[34m{}\x1b[37m{}\x1b[m]",
+                bpbar_, cpbar_, dpbar_
+            );
+            let _ = std::io::stdout().flush();
+        }
 
-                let abar_ = draw_bar((q2.0 + 1.0) / 2.0, BAR_WIDTH);
-                let bbar_ = draw_bar((q2.1 + 1.0) / 2.0, BAR_WIDTH);
-                let cbar_ = draw_bar((q2.2 + 1.0) / 2.0, BAR_WIDTH);
-                let dbar_ = draw_bar((q2.3 + 1.0) / 2.0, BAR_WIDTH);
-                let bpbar_ = draw_bar((q2p.0 + 1.0) / 2.0, PBAR_WIDTH);
-                let cpbar_ = draw_bar((q2p.1 + 1.0) / 2.0, PBAR_WIDTH);
-                let dpbar_ = draw_bar((q2p.2 + 1.0) / 2.0, PBAR_WIDTH);
-                print!(
-                    "q=[\x1b[2m{}\x1b[0;31m{}\x1b[34m{}\x1b[37m{}\x1b[m], ",
-                    abar_, bbar_, cbar_, dbar_
-                );
-                print!(
-                    "q'=[\x1b[31m{}\x1b[34m{}\x1b[37m{}\x1b[m]",
-                    bpbar_, cpbar_, dpbar_
-                );
-                let _ = std::io::stdout().flush();
+        fn show_moves(count: u8, moves: [Option<CubeMove>; 7], times: [u32; 7]) {
+            print!("{}", CREL);
+            print!("count={:3}, ", count);
+            print!("({:.3} s) ", times[0] as f32 / 1000.0);
+            for mv in moves {
+                print!("{:2} ", mv.map_or("??".to_owned(), |m| m.to_string()));
             }
+            println!();
+        }
 
-            fn show_moves(move_count: u8, moves: [Option<CubeMove>; 7], move_times: [u32; 7]) {
-                print!("{}", CREL);
-                print!("count={:3}, ", move_count);
-                print!("({:.3} s) ", move_times[0] as f32 / 1000.0);
-                for mv in moves {
-                    print!("{} ", mv.map_or("??".to_owned(), |m| m.to_string()));
-                }
-                println!();
+        fn show_cube_state(count: u8, state: CubeStateRaw) {
+            print!("{}", CREL);
+            print!("count={:3}, ", count);
+
+            let Ok(state) = CubeState::try_from(state) else {
+                println!("invalid state");
+                return;
+            };
+
+            print!(
+                "corners=[{}], ",
+                state
+                    .corners
+                    .iter()
+                    .map(|c| c.show())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+
+            println!(
+                "edges=[{}]",
+                state
+                    .edges
+                    .iter()
+                    .map(|c| c.show())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+
+        fn show_battery_state(charging: bool, percentage: u32) {
+            print!("{}", CREL);
+            print!("battery={}%", percentage);
+            if charging {
+                print!(" (charging)");
             }
-
-            fn show_cube_state(move_count: u8, state: CubeStateRaw) {
-                print!("{}", CREL);
-                print!("count={:3}, ", move_count);
-
-                let Ok(state): Result<CubeState, _> = state.try_into() else {
-                    println!("invalid state");
-                    return;
-                };
-
-                print!(
-                    "corners=[{}], ",
-                    state
-                        .corners
-                        .iter()
-                        .map(|c| c.show())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-
-                println!(
-                    "edges=[{}]",
-                    state
-                        .edges
-                        .iter()
-                        .map(|c| c.show())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-            }
-
-            fn show_battery_state(battery_charging: bool, battery_percentage: u32) {
-                print!("{}", CREL);
-                print!("battery={}%", battery_percentage);
-                if battery_charging {
-                    print!(" (charging)");
-                }
-                println!();
-            }
+            println!();
         }
     }
 
@@ -523,13 +506,13 @@ mod codec {
             let mut biter = BiterMut::new(&mut message);
 
             match self {
-                RequestMessage::RequestCubeState => {
+                Self::RequestCubeState => {
                     biter.assign(8, RequestMessageType::RequestCubeState as u8 as u32);
                 }
-                RequestMessage::RequestBatteryState => {
+                Self::RequestBatteryState => {
                     biter.assign(8, RequestMessageType::RequestBatteryState as u8 as u32);
                 }
-                RequestMessage::ResetCubeState(state) => {
+                Self::ResetCubeState(state) => {
                     biter.assign(8, RequestMessageType::ResetCubeState as u8 as u32);
                     for val in state.corners_position {
                         biter.assign(3, val as u32);
@@ -575,7 +558,7 @@ mod cipher {
             let Some(manufacturer_data) = device_props.manufacturer_data.get(&1) else {
                 return Err(DeviceError::NoDeviceIdentifier);
             };
-            let Ok(device_id): Result<&[u8; 9], _> = manufacturer_data.as_slice().try_into() else {
+            let Ok(device_id) = <&[u8; 9]>::try_from(&manufacturer_data[..]) else {
                 return Err(DeviceError::InvalidDeviceIdentifier);
             };
 
@@ -589,15 +572,18 @@ mod cipher {
                 0x02, 0x43,
             ];
 
-            key.iter_mut()
-                .zip(device_key.into_iter())
-                .for_each(|(a, b)| *a = ((*a as u16 + b as u16) % 255) as u8);
-            iv.iter_mut()
-                .zip(device_key.into_iter())
-                .for_each(|(a, b)| *a = ((*a as u16 + b as u16) % 255) as u8);
+            fn add_device_key(secret: &mut [u8; 16], device_key: &[u8; 6]) {
+                secret
+                    .iter_mut()
+                    .zip(device_key)
+                    .for_each(|(a, b)| *a = ((*a as u16 + *b as u16) % 255) as u8);
+            }
 
-            let key: Block = GenericArray::clone_from_slice(&key);
-            let iv: Block = GenericArray::clone_from_slice(&iv);
+            add_device_key(&mut key, &device_key);
+            add_device_key(&mut iv, &device_key);
+
+            let key = GenericArray::from(key);
+            let iv = GenericArray::from(iv);
             let aes = Aes128::new(&key);
             Ok(GanCubeV2Cipher { key, iv, aes })
         }
@@ -605,15 +591,12 @@ mod cipher {
         pub(super) fn encrypt(&self, value: &mut [u8; 20]) {
             fn encrypt_block(cipher: &GanCubeV2Cipher, block: &mut [u8]) {
                 let block = GenericArray::from_mut_slice(block);
-                block
-                    .iter_mut()
-                    .zip(cipher.iv.into_iter())
-                    .for_each(|(a, b)| *a ^= b);
+                block.iter_mut().zip(cipher.iv).for_each(|(a, b)| *a ^= b);
                 cipher.aes.encrypt_block(block);
             }
 
-            encrypt_block(self, &mut value[..16]);
             let offset = value.len() - 16;
+            encrypt_block(self, &mut value[..16]);
             encrypt_block(self, &mut value[offset..]);
         }
 
@@ -621,10 +604,7 @@ mod cipher {
             fn decrypt_block(cipher: &GanCubeV2Cipher, block: &mut [u8]) {
                 let block = GenericArray::from_mut_slice(block);
                 cipher.aes.decrypt_block(block);
-                block
-                    .iter_mut()
-                    .zip(cipher.iv.into_iter())
-                    .for_each(|(a, b)| *a ^= b);
+                block.iter_mut().zip(cipher.iv).for_each(|(a, b)| *a ^= b);
             }
 
             let offset = value.len() - 16;

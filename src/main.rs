@@ -39,13 +39,40 @@ async fn main() -> Result<(), Box<dyn Error>> {
         println!("no GANCube is found, please try again.");
     };
 
+    adapter.stop_scan().await?;
+
     println!("connect to GANCube...");
     let gancube = builder.connect().await?;
     println!("connected! have fun~");
     println!();
 
-    fn make_cheatsheet(keymap: [[[&'static str; 4]; 12]; 2]) -> String {
-        const STYLED_TEMPLATE: &str = "
+    println!("{}", make_cheatsheet(DEFAULT_KEYMAP));
+    println!();
+
+    let input = CuboardInput::new(DEFAULT_KEYMAP);
+    let input_handler: Box<dyn FnMut(ResponseMessage) + Send> =
+        if let Some(text_filename) = text_filename {
+            let text = BufReader::new(File::open(text_filename)?)
+                .lines()
+                .map(|l| l.unwrap());
+            let mut trainer = CuboardInputTrainer::<_, 3>::new(input, text);
+            Box::new(move |msg| trainer.handle_message(msg))
+        } else {
+            let mut printer = CuboardInputPrinter::new(input);
+            Box::new(move |msg| printer.handle_message(msg))
+        };
+    let handle = gancube.register_handler(input_handler).await?;
+
+    gancube.subscribe_response().await?;
+    gancube.request_cube_state().await?;
+
+    handle.await?;
+
+    Ok(())
+}
+
+fn make_cheatsheet(keymap: CuboardKeymap) -> String {
+    const STYLED_TEMPLATE: &str = "
      \x1b[30;44m  {B.3}  \x1b[m     
      \x1b[30;44m{B.2}   {B.0}\x1b[m     
      \x1b[30;44m  {B.1}  \x1b[m     
@@ -59,109 +86,87 @@ async fn main() -> Result<(), Box<dyn Error>> {
      \x1b[30;43m{D.1}   {D.3}\x1b[m     
      \x1b[30;43m  {D.0}  \x1b[m     
 ";
-        const STYLED_TEMPLATE_BAR: &str = "CHEAT SHEET:
+    const STYLED_TEMPLATE_BAR: &str = "CHEAT SHEET:
      double     |      single     |     single      |     double
     clockwise   |     clockwise   |counter-clockwise|counter-clockwise
 ----------------|-----------------|-----------------|-----------------
 ";
-        use cube::CubeMove::*;
-        let mut a = STYLED_TEMPLATE.to_string();
-        let mut b = STYLED_TEMPLATE.to_string();
-        let mut c = STYLED_TEMPLATE.to_string();
-        let mut d = STYLED_TEMPLATE.to_string();
+    use cube::CubeMove::*;
+    let mut a = STYLED_TEMPLATE.to_string();
+    let mut b = STYLED_TEMPLATE.to_string();
+    let mut c = STYLED_TEMPLATE.to_string();
+    let mut d = STYLED_TEMPLATE.to_string();
 
-        for side in [U, D, F, B, L, R] {
-            for i in 0..4 {
-                fn f(s: &str) -> String {
-                    s.replace('\n', "↵").replace(' ', "⌴")
-                }
-                let name = format!("{{{}.{}}}", &side.to_string()[0..1], i);
-                a = a.replace(&name, &f(keymap[1][side as u8 as usize][i]));
-                b = b.replace(&name, &f(keymap[0][side as u8 as usize][i]));
-                c = c.replace(&name, &f(keymap[0][side.rev() as u8 as usize][i]));
-                d = d.replace(&name, &f(keymap[1][side.rev() as u8 as usize][i]));
+    for side in [U, D, F, B, L, R] {
+        for i in 0..4 {
+            fn f(s: &str) -> String {
+                s.replace('\n', "↵").replace(' ', "⌴")
             }
+            let name = format!("{{{}.{}}}", &side.to_string(), i);
+            a = a.replace(&name, &f(keymap[1][side as u8 as usize][i]));
+            b = b.replace(&name, &f(keymap[0][side as u8 as usize][i]));
+            c = c.replace(&name, &f(keymap[0][side.rev() as u8 as usize][i]));
+            d = d.replace(&name, &f(keymap[1][side.rev() as u8 as usize][i]));
         }
-
-        let a = a.trim_matches('\n').split('\n');
-        let b = b.trim_matches('\n').split('\n');
-        let c = c.trim_matches('\n').split('\n');
-        let d = d.trim_matches('\n').split('\n');
-        STYLED_TEMPLATE_BAR.to_string()
-            + &a.zip(b)
-                .zip(c)
-                .zip(d)
-                .map(|(((a, b), c), d)| [a, b, c, d].join(" | "))
-                .collect::<Vec<_>>()
-                .join("\n")
     }
 
-    println!("{}", make_cheatsheet(DEFAULT_KEYMAP));
-    println!();
-
-    let input_handler: Box<dyn FnMut(ResponseMessage) + Send> =
-        if let Some(text_filename) = text_filename {
-            let text = BufReader::new(File::open(text_filename)?)
-                .lines()
-                .map(|l| l.unwrap());
-            let mut trainer = CuboardInputTrainer::<_, 3>::new(CuboardInput::new(), text);
-            Box::new(move |msg| trainer.handle_message(msg))
-        } else {
-            let mut printer = CuboardInputPrinter::new(CuboardInput::new());
-            Box::new(move |msg| printer.handle_message(msg))
-        };
-    let handle = gancube.register_handler(input_handler).await?;
-
-    gancube.subscribe_response().await?;
-    gancube.request_cube_state().await?;
-
-    handle.await?;
-
-    Ok(())
+    let a = a.trim_matches('\n').split('\n');
+    let b = b.trim_matches('\n').split('\n');
+    let c = c.trim_matches('\n').split('\n');
+    let d = d.trim_matches('\n').split('\n');
+    STYLED_TEMPLATE_BAR.to_string()
+        + &a.zip(b)
+            .zip(c)
+            .zip(d)
+            .map(|(((a, b), c), d)| [a, b, c, d].join(" | "))
+            .collect::<Vec<_>>()
+            .join("\n")
 }
 
 struct CuboardInput {
     cuboard: Cuboard,
-    keymap: [[[&'static str; 4]; 12]; 2],
+    keymap: CuboardKeymap,
     count: Option<u8>,
 }
 
-const DEFAULT_KEYMAP: [[[&str; 4]; 12]; 2] = [
+type CuboardKeymap = [[[&'static str; 4]; 12]; 2];
+
+const DEFAULT_KEYMAP: CuboardKeymap = [
     [
-        ["d", "u", "c", "k"],
-        ["(", "[", "{", "<"],
-        ["g", "a", "s", "p"],
-        ["0", " ", "z", "q"],
-        ["f", "l", "o", "w"],
-        ["'", ".", ":", "!"],
-        ["j", "i", "n", "x"],
-        ["+", "-", "*", "/"],
-        ["m", "y", "t", "h"],
-        ["1", "2", "3", "4"],
-        ["v", "e", "r", "b"],
-        ["@", "$", "&", "`"],
+        ["d", "u", "c", "k"], // U
+        ["(", "[", "{", "<"], // U'
+        ["g", "a", "s", "p"], // R
+        ["0", " ", "z", "q"], // R'
+        ["f", "l", "o", "w"], // F
+        ["'", ".", ":", "!"], // F'
+        ["j", "i", "n", "x"], // D
+        ["+", "-", "*", "/"], // D'
+        ["m", "y", "t", "h"], // L
+        ["1", "2", "3", "4"], // L'
+        ["v", "e", "r", "b"], // B
+        ["@", "$", "&", "`"], // B'
     ],
     [
-        ["D", "U", "C", "K"],
-        [")", "]", "}", ">"],
-        ["G", "A", "S", "P"],
-        ["9", "\n", "Z", "Q"],
-        ["F", "L", "O", "W"],
-        ["\"", ",", ";", "?"],
-        ["J", "I", "N", "X"],
-        ["=", "|", "^", "\\"],
-        ["M", "Y", "T", "H"],
-        ["5", "6", "7", "8"],
-        ["V", "E", "R", "B"],
-        ["#", "%", "~", "_"],
+        ["D", "U", "C", "K"],  // U
+        [")", "]", "}", ">"],  // U'
+        ["G", "A", "S", "P"],  // R
+        ["9", "\n", "Z", "Q"], // R'
+        ["F", "L", "O", "W"],  // F
+        ["\"", ",", ";", "?"], // F'
+        ["J", "I", "N", "X"],  // D
+        ["=", "|", "^", "\\"], // D'
+        ["M", "Y", "T", "H"],  // L
+        ["5", "6", "7", "8"],  // L'
+        ["V", "E", "R", "B"],  // B
+        ["#", "%", "~", "_"],  // B'
     ],
 ];
 
 impl CuboardInput {
-    fn new() -> Self {
+    fn new(keymap: CuboardKeymap) -> Self {
         CuboardInput {
             cuboard: Cuboard::new(),
-            keymap: DEFAULT_KEYMAP,
+            keymap,
             count: None,
         }
     }
@@ -195,63 +200,53 @@ impl CuboardInputPrinter {
     }
 
     fn handle_message(&mut self, msg: ResponseMessage) {
+        use std::io::{stdout, Write};
+
         if self.input.count.is_none() {
             if let ResponseMessage::State { count, state: _ } = msg {
                 self.input.count = Some(count);
                 print!("\r\x1b[7m \x1b[m\n\x1b[100m\x1b[2K\x1b[m");
-                let _ = std::io::Write::flush(&mut std::io::stdout());
+                let _ = stdout().flush();
             }
             return;
         }
 
-        if let ResponseMessage::Moves {
-            count,
-            moves,
-            times: _,
-        } = msg
-        {
-            let curr_count = self.input.count.unwrap();
-            let diff = count.wrapping_sub(curr_count) as usize;
-            self.input.count = Some(count);
-            if diff > 7 {
-                eprintln!("unsynchronized cube movement");
-            }
+        let ResponseMessage::Moves { count, moves, times: _ } = msg else { return; };
 
-            for &mv in moves[..diff].iter().rev() {
-                match mv {
-                    Some(mv) => {
-                        self.input.cuboard.input(mv);
-                    }
-                    None => {
-                        eprintln!("unknown cube movement");
-                    }
-                };
-            }
+        let prev_count = self.input.count.unwrap();
+        self.input.count = Some(count);
 
-            let text = self.input.text();
-            print!("\x1b[A\r\x1b[2K{}\x1b[K\x1b[0;7m \x1b[m\n", text);
-            if text.contains('\n') {
-                self.input.cuboard.finish();
+        let diff = count.wrapping_sub(prev_count).clamp(0, 7) as usize;
+        for &mv in moves[..diff].iter().rev() {
+            if let Some(mv) = mv {
+                self.input.cuboard.input(mv);
             }
-
-            let complete_part = self.input.complete_part();
-            let remain_part = self.input.remain_part();
-            const MAX_LEN: usize = 12;
-            if complete_part.len() + remain_part.len() > MAX_LEN {
-                let overflow = complete_part.len() + remain_part.len() - MAX_LEN;
-                print!(
-                    "\r\x1b[100m\x1b[2K…\x1b[4m{}\x1b[2m{}\x1b[m",
-                    &complete_part[overflow + 1..],
-                    remain_part,
-                );
-            } else {
-                print!(
-                    "\r\x1b[100m\x1b[2K\x1b[4m{}\x1b[2m{}\x1b[m",
-                    complete_part, remain_part,
-                );
-            }
-            let _ = std::io::Write::flush(&mut std::io::stdout());
         }
+
+        let text = self.input.text();
+        print!("\x1b[A\r\x1b[2K{}\x1b[K\x1b[0;7m \x1b[m\n", text);
+        if text.contains('\n') {
+            assert!(!text[..text.len() - 1].contains('\n'));
+            self.input.cuboard.finish();
+        }
+
+        let complete_part = self.input.complete_part();
+        let remain_part = self.input.remain_part();
+        const MAX_LEN: usize = 12;
+        if complete_part.len() + remain_part.len() > MAX_LEN {
+            let overflow = complete_part.len() + remain_part.len() - MAX_LEN;
+            print!(
+                "\r\x1b[100m\x1b[2K…\x1b[4m{}\x1b[2m{}\x1b[m",
+                &complete_part[overflow + 1..],
+                remain_part,
+            );
+        } else {
+            print!(
+                "\r\x1b[100m\x1b[2K\x1b[4m{}\x1b[2m{}\x1b[m",
+                complete_part, remain_part,
+            );
+        }
+        let _ = stdout().flush();
     }
 }
 
@@ -272,6 +267,8 @@ impl<T: Iterator<Item = String>, const N: usize> CuboardInputTrainer<T, N> {
     }
 
     fn handle_message(&mut self, msg: ResponseMessage) {
+        use std::io::{stdout, Write};
+
         if self.input.count.is_none() {
             if let ResponseMessage::State { count, state: _ } = msg {
                 self.input.count = Some(count);
@@ -283,87 +280,78 @@ impl<T: Iterator<Item = String>, const N: usize> CuboardInputTrainer<T, N> {
                     println!("\x1b[2m{}\x1b[m", line);
                 }
                 print!("\r\x1b[100m\x1b[2K \x1b[m\r");
-                let _ = std::io::Write::flush(&mut std::io::stdout());
+                let _ = stdout().flush();
             }
 
             return;
         }
 
-        if let ResponseMessage::Moves {
-            count,
-            moves,
-            times: _,
-        } = msg
-        {
-            let curr_count = self.input.count.unwrap();
-            let diff = {
-                let delta = count.wrapping_add(curr_count.wrapping_neg());
-                let delta_ = delta.wrapping_neg();
-                delta.min(delta_) as usize
-            };
-            self.input.count = Some(count);
+        let ResponseMessage::Moves { count, moves, times: _ } = msg else { return; };
 
-            for &mv in moves[..diff].iter().rev() {
-                if let Some(mv) = mv {
-                    self.input.cuboard.input(mv);
-                }
+        let prev_count = self.input.count.unwrap();
+        self.input.count = Some(count);
+
+        let diff = count.wrapping_sub(prev_count).clamp(0, 7) as usize;
+        for &mv in moves[..diff].iter().rev() {
+            if let Some(mv) = mv {
+                self.input.cuboard.input(mv);
             }
-
-            print!("\x1b[{}A", N);
-            for line in self.lines.iter() {
-                println!("\r\x1b[2m\x1b[2K{}\x1b[m", line);
-            }
-
-            let text = self.input.text();
-            let decoreated_text: String = text
-                .trim_end_matches('\n')
-                .chars()
-                .zip(self.lines[0].chars().chain([' '].into_iter().cycle()))
-                .map(|(a, b)| {
-                    if a == b {
-                        format!("{}", a)
-                    } else {
-                        format!("\x1b[41m{}\x1b[m", a)
-                    }
-                })
-                .collect();
-
-            print!("\x1b[{}A", N);
-            if text.contains('\n') {
-                let cursor = self.lines[1].chars().next().unwrap_or(' ');
-                print!("\r{}\n\x1b[7m{}\x1b[m", decoreated_text, cursor);
-            } else {
-                let cursor = self.lines[0].chars().nth(text.len()).unwrap_or(' ');
-                print!("\r{}\x1b[7m{}\x1b[m\n", decoreated_text, cursor);
-            }
-            print!("\x1b[{}B\r", N - 1);
-
-            if text.contains('\n') {
-                assert!(!text[..text.len() - 1].contains('\n'));
-                let new_line = self.text.next().unwrap_or_default();
-                print!("\r\x1b[m\x1b[2K\r\x1b[2m{}\x1b[m\n", new_line);
-                self.input.cuboard.finish();
-                self.lines.rotate_left(1);
-                self.lines[N - 1] = new_line;
-            }
-
-            let complete_part = self.input.complete_part();
-            let remain_part = self.input.remain_part();
-            const MAX_LEN: usize = 12;
-            if complete_part.len() + remain_part.len() > MAX_LEN {
-                let overflow = complete_part.len() + remain_part.len() - MAX_LEN;
-                print!(
-                    "\r\x1b[100m\x1b[2K…\x1b[4m{}\x1b[2m{}\x1b[m",
-                    &complete_part[overflow + 1..],
-                    remain_part,
-                );
-            } else {
-                print!(
-                    "\r\x1b[100m\x1b[2K\x1b[4m{}\x1b[2m{}\x1b[m",
-                    complete_part, remain_part,
-                );
-            }
-            let _ = std::io::Write::flush(&mut std::io::stdout());
         }
+
+        print!("\x1b[{}A", N);
+        for line in self.lines.iter() {
+            println!("\r\x1b[2m\x1b[2K{}\x1b[m", line);
+        }
+
+        let text = self.input.text();
+        let decoreated_text: String = text
+            .trim_end_matches('\n')
+            .chars()
+            .zip(self.lines[0].chars().chain([' '].into_iter().cycle()))
+            .map(|(a, b)| {
+                if a == b {
+                    format!("{}", a)
+                } else {
+                    format!("\x1b[41m{}\x1b[m", a)
+                }
+            })
+            .collect();
+
+        print!("\x1b[{}A", N);
+        if text.contains('\n') {
+            let cursor = self.lines[1].chars().next().unwrap_or(' ');
+            print!("\r{}\n\x1b[7m{}\x1b[m", decoreated_text, cursor);
+        } else {
+            let cursor = self.lines[0].chars().nth(text.len()).unwrap_or(' ');
+            print!("\r{}\x1b[7m{}\x1b[m\n", decoreated_text, cursor);
+        }
+        print!("\x1b[{}B\r", N - 1);
+
+        if text.contains('\n') {
+            assert!(!text[..text.len() - 1].contains('\n'));
+            let new_line = self.text.next().unwrap_or_default();
+            print!("\r\x1b[m\x1b[2K\r\x1b[2m{}\x1b[m\n", new_line);
+            self.input.cuboard.finish();
+            self.lines.rotate_left(1);
+            self.lines[N - 1] = new_line;
+        }
+
+        let complete_part = self.input.complete_part();
+        let remain_part = self.input.remain_part();
+        const MAX_LEN: usize = 12;
+        if complete_part.len() + remain_part.len() > MAX_LEN {
+            let overflow = complete_part.len() + remain_part.len() - MAX_LEN;
+            print!(
+                "\r\x1b[100m\x1b[2K…\x1b[4m{}\x1b[2m{}\x1b[m",
+                &complete_part[overflow + 1..],
+                remain_part,
+            );
+        } else {
+            print!(
+                "\r\x1b[100m\x1b[2K\x1b[4m{}\x1b[2m{}\x1b[m",
+                complete_part, remain_part,
+            );
+        }
+        let _ = stdout().flush();
     }
 }

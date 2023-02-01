@@ -15,16 +15,10 @@ pub enum CornerPosition {
 }
 
 impl CornerPosition {
-    pub const LIST: [CornerPosition; 8] = [
-        CornerPosition::UFR,
-        CornerPosition::ULF,
-        CornerPosition::UBL,
-        CornerPosition::URB,
-        CornerPosition::DRF,
-        CornerPosition::DFL,
-        CornerPosition::DLB,
-        CornerPosition::DBR,
-    ];
+    pub const VALUES: [CornerPosition; 8] = {
+        use CornerPosition::*;
+        [UFR, ULF, UBL, URB, DRF, DFL, DLB, DBR]
+    };
 
     const NAMES: [&str; 8] = ["UFR", "ULF", "UBL", "URB", "DRF", "DFL", "DLB", "DBR"];
 }
@@ -33,10 +27,10 @@ impl TryFrom<u8> for CornerPosition {
     type Error = ();
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match CornerPosition::LIST.get(value as usize) {
-            Some(res) => Ok(*res),
-            None => Err(()),
-        }
+        CornerPosition::VALUES
+            .get(value as usize)
+            .cloned()
+            .ok_or(())
     }
 }
 
@@ -48,21 +42,20 @@ pub enum CornerOrientation {
 }
 
 impl CornerOrientation {
-    pub const LIST: [CornerOrientation; 3] = [
-        CornerOrientation::Normal,
-        CornerOrientation::Clockwise,
-        CornerOrientation::Counterclockwise,
-    ];
+    pub const VALUES: [CornerOrientation; 3] = {
+        use CornerOrientation::*;
+        [Normal, Clockwise, Counterclockwise]
+    };
 }
 
 impl TryFrom<u8> for CornerOrientation {
     type Error = ();
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match CornerOrientation::LIST.get(value as usize) {
-            Some(res) => Ok(*res),
-            None => Err(()),
-        }
+        CornerOrientation::VALUES
+            .get(value as usize)
+            .cloned()
+            .ok_or(())
     }
 }
 
@@ -73,16 +66,16 @@ impl Corner {
     pub fn show(self) -> String {
         let name = CornerPosition::NAMES[self.0 as u8 as usize];
         match self.1 {
-            CornerOrientation::Normal => name.to_string(),
+            CornerOrientation::Normal => name.to_owned(),
             CornerOrientation::Clockwise => {
-                let mut name = name.as_bytes().to_vec();
+                let mut name = name.chars().collect::<Vec<_>>();
                 name.rotate_left(1);
-                String::from_utf8(name).unwrap()
+                name.into_iter().collect()
             }
             CornerOrientation::Counterclockwise => {
-                let mut name = name.as_bytes().to_vec();
+                let mut name = name.chars().collect::<Vec<_>>();
                 name.rotate_left(2);
-                String::from_utf8(name).unwrap()
+                name.into_iter().collect()
             }
         }
     }
@@ -106,20 +99,10 @@ pub enum EdgePosition {
 }
 
 impl EdgePosition {
-    pub const LIST: [EdgePosition; 12] = [
-        EdgePosition::UR,
-        EdgePosition::UF,
-        EdgePosition::UL,
-        EdgePosition::UB,
-        EdgePosition::DR,
-        EdgePosition::DF,
-        EdgePosition::DL,
-        EdgePosition::DB,
-        EdgePosition::FR,
-        EdgePosition::FL,
-        EdgePosition::BL,
-        EdgePosition::BR,
-    ];
+    pub const VALUES: [EdgePosition; 12] = {
+        use EdgePosition::*;
+        [UR, UF, UL, UB, DR, DF, DL, DB, FR, FL, BL, BR]
+    };
 
     const NAMES: [&str; 12] = [
         "UR", "UF", "UL", "UB", "DR", "DF", "DL", "DB", "FR", "FL", "BL", "BR",
@@ -130,10 +113,7 @@ impl TryFrom<u8> for EdgePosition {
     type Error = ();
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match EdgePosition::LIST.get(value as usize) {
-            Some(res) => Ok(*res),
-            None => Err(()),
-        }
+        EdgePosition::VALUES.get(value as usize).cloned().ok_or(())
     }
 }
 
@@ -145,17 +125,17 @@ pub enum EdgeOrientation {
 }
 
 impl EdgeOrientation {
-    pub const LIST: [EdgeOrientation; 2] = [EdgeOrientation::Normal, EdgeOrientation::Flip];
+    pub const VALUES: [EdgeOrientation; 2] = [EdgeOrientation::Normal, EdgeOrientation::Flip];
 }
 
 impl TryFrom<u8> for EdgeOrientation {
     type Error = ();
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match EdgeOrientation::LIST.get(value as usize) {
-            Some(res) => Ok(*res),
-            None => Err(()),
-        }
+        EdgeOrientation::VALUES
+            .get(value as usize)
+            .cloned()
+            .ok_or(())
     }
 }
 
@@ -166,11 +146,11 @@ impl Edge {
     pub fn show(self) -> String {
         let name = EdgePosition::NAMES[self.0 as u8 as usize];
         match self.1 {
-            EdgeOrientation::Normal => name.to_string(),
+            EdgeOrientation::Normal => name.to_owned(),
             EdgeOrientation::Flip => {
-                let mut name = name.as_bytes().to_vec();
+                let mut name = name.chars().collect::<Vec<_>>();
                 name.rotate_left(1);
-                String::from_utf8(name).unwrap()
+                name.into_iter().collect()
             }
         }
     }
@@ -250,7 +230,8 @@ impl Neg for EdgeOrientation {
     type Output = EdgeOrientation;
 
     fn neg(self) -> Self::Output {
-        Self::try_from((2 - self as u8) % 2).unwrap()
+        // Self::try_from((2 - self as u8) % 2).unwrap()
+        self
     }
 }
 
@@ -290,7 +271,7 @@ impl TryFrom<CubeStateRaw> for CubeState {
         let corners: [Corner; 8] = value
             .corners_position
             .into_iter()
-            .zip(value.corners_orientation.into_iter())
+            .zip(value.corners_orientation)
             .map(|v| v.try_into())
             .collect::<Result<Vec<Corner>, ()>>()?
             .try_into()
@@ -299,7 +280,7 @@ impl TryFrom<CubeStateRaw> for CubeState {
         let edges: [Edge; 12] = value
             .edges_position
             .into_iter()
-            .zip(value.edges_orientation.into_iter())
+            .zip(value.edges_orientation)
             .map(|v| v.try_into())
             .collect::<Result<Vec<Edge>, ()>>()?
             .try_into()
@@ -360,23 +341,20 @@ pub enum CubeMove {
     // U: white, R: red, F: green, D: yellow, L: orange, B: blue
 }
 
+impl CubeMove {
+    pub const VALUES: [CubeMove; 12] = {
+        use CubeMove::*;
+        [U, Up, R, Rp, F, Fp, D, Dp, L, Lp, B, Bp]
+    };
+
+    const NAMES: [&str; 12] = [
+        "U", "U'", "R", "R'", "F", "F'", "D", "D'", "L", "L'", "B", "B'",
+    ];
+}
+
 impl Display for CubeMove {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            CubeMove::U => "U ",
-            CubeMove::Up => "U'",
-            CubeMove::R => "R ",
-            CubeMove::Rp => "R'",
-            CubeMove::F => "F ",
-            CubeMove::Fp => "F'",
-            CubeMove::D => "D ",
-            CubeMove::Dp => "D'",
-            CubeMove::L => "L ",
-            CubeMove::Lp => "L'",
-            CubeMove::B => "B ",
-            CubeMove::Bp => "B'",
-        };
-        write!(f, "{}", s)
+        write!(f, "{}", Self::NAMES[*self as u8 as usize])
     }
 }
 
@@ -384,118 +362,100 @@ impl TryFrom<u8> for CubeMove {
     type Error = ();
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(CubeMove::U),
-            1 => Ok(CubeMove::Up),
-            2 => Ok(CubeMove::R),
-            3 => Ok(CubeMove::Rp),
-            4 => Ok(CubeMove::F),
-            5 => Ok(CubeMove::Fp),
-            6 => Ok(CubeMove::D),
-            7 => Ok(CubeMove::Dp),
-            8 => Ok(CubeMove::L),
-            9 => Ok(CubeMove::Lp),
-            10 => Ok(CubeMove::B),
-            11 => Ok(CubeMove::Bp),
-            _ => Err(()),
-        }
+        Self::VALUES.get(value as usize).cloned().ok_or(())
     }
 }
 
 impl CubeMove {
     pub fn rev(self) -> Self {
+        use CubeMove::*;
         match self {
-            CubeMove::U => CubeMove::Up,
-            CubeMove::Up => CubeMove::U,
-            CubeMove::R => CubeMove::Rp,
-            CubeMove::Rp => CubeMove::R,
-            CubeMove::F => CubeMove::Fp,
-            CubeMove::Fp => CubeMove::F,
-            CubeMove::D => CubeMove::Dp,
-            CubeMove::Dp => CubeMove::D,
-            CubeMove::L => CubeMove::Lp,
-            CubeMove::Lp => CubeMove::L,
-            CubeMove::B => CubeMove::Bp,
-            CubeMove::Bp => CubeMove::B,
+            U => Up,
+            Up => U,
+            R => Rp,
+            Rp => R,
+            F => Fp,
+            Fp => F,
+            D => Dp,
+            Dp => D,
+            L => Lp,
+            Lp => L,
+            B => Bp,
+            Bp => B,
         }
     }
 
     pub fn abs(self) -> Self {
+        use CubeMove::*;
         match self {
-            CubeMove::U | CubeMove::Up => CubeMove::U,
-            CubeMove::R | CubeMove::Rp => CubeMove::R,
-            CubeMove::F | CubeMove::Fp => CubeMove::F,
-            CubeMove::D | CubeMove::Dp => CubeMove::D,
-            CubeMove::L | CubeMove::Lp => CubeMove::L,
-            CubeMove::B | CubeMove::Bp => CubeMove::B,
+            U | Up => U,
+            R | Rp => R,
+            F | Fp => F,
+            D | Dp => D,
+            L | Lp => L,
+            B | Bp => B,
         }
     }
 
     pub fn mirror(self) -> Self {
+        use CubeMove::*;
         match self {
-            CubeMove::U => CubeMove::Dp,
-            CubeMove::Up => CubeMove::D,
-            CubeMove::R => CubeMove::Lp,
-            CubeMove::Rp => CubeMove::L,
-            CubeMove::F => CubeMove::Bp,
-            CubeMove::Fp => CubeMove::B,
-            CubeMove::D => CubeMove::Up,
-            CubeMove::Dp => CubeMove::U,
-            CubeMove::L => CubeMove::Rp,
-            CubeMove::Lp => CubeMove::R,
-            CubeMove::B => CubeMove::Fp,
-            CubeMove::Bp => CubeMove::F,
+            U => Dp,
+            Up => D,
+            R => Lp,
+            Rp => L,
+            F => Bp,
+            Fp => B,
+            D => Up,
+            Dp => U,
+            L => Rp,
+            Lp => R,
+            B => Fp,
+            Bp => F,
         }
     }
 
     pub fn commute(self, other: Self) -> bool {
+        use CubeMove::*;
         matches!(
             (self, other),
-            (
-                CubeMove::U | CubeMove::Up | CubeMove::D | CubeMove::Dp,
-                CubeMove::U | CubeMove::Up | CubeMove::D | CubeMove::Dp
-            ) | (
-                CubeMove::R | CubeMove::Rp | CubeMove::L | CubeMove::Lp,
-                CubeMove::R | CubeMove::Rp | CubeMove::L | CubeMove::Lp
-            ) | (
-                CubeMove::F | CubeMove::Fp | CubeMove::B | CubeMove::Bp,
-                CubeMove::F | CubeMove::Fp | CubeMove::B | CubeMove::Bp
-            )
+            (U | Up | D | Dp, U | Up | D | Dp)
+                | (R | Rp | L | Lp, R | Rp | L | Lp)
+                | (F | Fp | B | Bp, F | Fp | B | Bp)
         )
     }
 }
 
 pub fn format_moves(moves: &[CubeMove]) -> String {
-    if moves.is_empty() {
-        return "".to_string();
-    }
-    let mut res = String::new();
-    let mut curr = moves[0];
-    let mut count = 0;
-
-    const NAMES: [&str; 12] = [
-        "U", "U'", "R", "R'", "F", "F'", "D", "D'", "L", "L'", "B", "B'",
-    ];
-
-    for mv in moves {
-        if mv == &curr {
-            count += 1;
-        } else {
-            let name = NAMES[curr as u8 as usize];
-            res += name;
-            if count > 1 {
-                res += &count.to_string();
-            }
-            curr = *mv;
-            count = 1;
+    fn group<T: Eq>(slice: &[T]) -> Vec<&[T]> {
+        let mut res = Vec::new();
+        if slice.is_empty() {
+            return res;
         }
+        let mut range = 0..0;
+        let mut curr = &slice[0];
+        for (index, value) in slice.iter().enumerate() {
+            if value == curr {
+                range.end += 1;
+            } else {
+                res.push(&slice[range]);
+                range = index..index + 1;
+                curr = value;
+            }
+        }
+        res.push(&slice[range]);
+        res
     }
 
-    let name = NAMES[curr as u8 as usize];
-    res += name;
-    if count > 1 {
-        res += &count.to_string();
-    }
-
-    res
+    group(moves)
+        .into_iter()
+        .map(|mvs| {
+            let len = mvs.len();
+            if len == 1 {
+                mvs[0].to_string()
+            } else {
+                mvs[0].to_string() + &len.to_string()
+            }
+        })
+        .collect()
 }
