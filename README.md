@@ -3,8 +3,33 @@
 Turn your smart cube to type something, and reverse turns to fix mistypings. Now it only
 supports GAN 356 i3, because I only have this one.
 
-It's still a prototype and can only be played in the command line. Pass the filename as an
-argument for the typing exercise.
+## How to use
+It's still a prototype and can only be played in the command line. It is developed under
+the ubuntu system with bluez (linux bluetooth stack). In theory, it should also support
+other operating systems and bluetooth libraries. Note that it utilizes ANSI escape code to
+produce stylized output.
+
+Build from source:
+
+```
+git clone git@github.com:worldmaker18349276/cuboard.git
+cd cuboard
+cargo build --release
+```
+
+Run:
+
+```
+./target/release/cuboard
+```
+
+Pass the filename as an argument for the typing exercise:
+
+```
+./target/release/cuboard README.md
+```
+
+Note that line breaks should be done manually, otherwise the output will be messed up.
 
 ## How does it works
 A keyboard has many keys, how to mimic a keyboard by turning only six sides? How to
