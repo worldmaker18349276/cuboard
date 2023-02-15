@@ -112,7 +112,13 @@ impl<P: Peripheral> GanCubeV2<P> {
                     }
                 };
 
+                let is_disconnected = codec::ResponseMessage::Disconnect == message;
+
                 handler(message);
+
+                if is_disconnected {
+                    return;
+                }
             }
         }))
     }
@@ -176,6 +182,7 @@ mod codec {
         CubeMoves    = 0b0010,
         CubeState    = 0b0100,
         BatteryState = 0b1001,
+        Disconnect   = 0b1101,
     }
 
     impl TryFrom<u8> for ResponseMessageType {
@@ -187,6 +194,7 @@ mod codec {
                 0b0010 => Ok(ResponseMessageType::CubeMoves),
                 0b0100 => Ok(ResponseMessageType::CubeState),
                 0b1001 => Ok(ResponseMessageType::BatteryState),
+                0b1101 => Ok(ResponseMessageType::Disconnect),
                 _ => Err(()),
             }
         }
@@ -195,6 +203,7 @@ mod codec {
     type Quaternion = (f32, f32, f32, f32);
     type QuaternionP = (f32, f32, f32);
 
+    #[derive(PartialEq, PartialOrd)]
     pub enum ResponseMessage {
         Gyroscope {
             q1: Quaternion,
@@ -215,6 +224,7 @@ mod codec {
             charging: bool,
             percentage: u32,
         },
+        Disconnect,
     }
 
     const CREL: &str = "\r\x1b[2K";
@@ -238,6 +248,7 @@ mod codec {
                 ResponseMessageType::CubeMoves => Self::decode_cube_moves(&mut biter),
                 ResponseMessageType::CubeState => Self::decode_cube_state(&mut biter),
                 ResponseMessageType::BatteryState => Self::decode_battery_state(&mut biter),
+                ResponseMessageType::Disconnect => Self::decode_disconnect(&mut biter),
             };
 
             Ok(message)
@@ -370,6 +381,19 @@ mod codec {
             }
         }
 
+        fn decode_disconnect(biter: &mut Biter) -> Self {
+            let remains0 = biter.extract(4) as u8;
+            let remains = (0..19).map(|_| biter.extract(8) as u8).collect::<Vec<_>>();
+            if remains0 != 0 || remains != [0; 19] {
+                eprintln!(
+                    "bad remains data, possibly broken: {:02X?}, {:02X?}",
+                    remains0, remains
+                );
+            }
+
+            Self::Disconnect
+        }
+
         pub fn show(self) {
             match self {
                 Self::Gyroscope { q1, q1p, q2, q2p } => Self::show_gyroscope(q1, q1p, q2, q2p),
@@ -383,6 +407,7 @@ mod codec {
                     charging,
                     percentage,
                 } => Self::show_battery_state(charging, percentage),
+                Self::Disconnect => Self::show_disconnect(),
             }
         }
 
@@ -482,11 +507,17 @@ mod codec {
             }
             println!();
         }
+
+        fn show_disconnect() {
+            print!("{}", CREL);
+            println!("auto disconnect");
+        }
     }
 
     #[allow(clippy::enum_variant_names)]
     #[rustfmt::skip]
     #[repr(u8)]
+    #[derive(PartialEq, Eq, PartialOrd, Ord)]
     enum RequestMessageType {
         RequestCubeState    = 0b_0000_0100,
         RequestBatteryState = 0b_0000_1001,

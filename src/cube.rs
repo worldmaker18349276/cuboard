@@ -235,6 +235,7 @@ impl Neg for EdgeOrientation {
     }
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub struct CubeStateRaw {
     pub corners_position: [u8; 8],
     pub corners_orientation: [u8; 8],
