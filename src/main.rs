@@ -211,7 +211,20 @@ impl CuboardInputPrinter {
             return;
         }
 
-        let ResponseMessage::Moves { count, moves, times: _ } = msg else { return; };
+        let (count, moves) = match msg {
+            ResponseMessage::Moves {
+                count,
+                moves,
+                times: _,
+            } => (count, moves),
+            ResponseMessage::Disconnect => {
+                println!();
+                return;
+            }
+            _ => {
+                return;
+            }
+        };
 
         let prev_count = self.input.count.unwrap();
         self.input.count = Some(count);
@@ -286,7 +299,20 @@ impl<T: Iterator<Item = String>, const N: usize> CuboardInputTrainer<T, N> {
             return;
         }
 
-        let ResponseMessage::Moves { count, moves, times: _ } = msg else { return; };
+        let (count, moves) = match msg {
+            ResponseMessage::Moves {
+                count,
+                moves,
+                times: _,
+            } => (count, moves),
+            ResponseMessage::Disconnect => {
+                println!();
+                return;
+            }
+            _ => {
+                return;
+            }
+        };
 
         let prev_count = self.input.count.unwrap();
         self.input.count = Some(count);
