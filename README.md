@@ -118,7 +118,7 @@ The full cheatsheet can be drawn as:
 
 ```
  first ||     double     |      single    |     single     |     double
-second ||    clockwise   |    clockwise   |counterclockwise|counterclockwise
+ turn  ||    clockwise   |    clockwise   |counterclockwise|counterclockwise
 -------||----------------|----------------|----------------|----------------
    B   ||      VERB      |      verb      |      @$&`      |      #%~_
    U   ||      DUCK      |      duck      |      ([{<      |      )]}>
