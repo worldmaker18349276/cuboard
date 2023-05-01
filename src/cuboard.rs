@@ -39,9 +39,9 @@ impl CuboardKey {
     fn parse(value: &[CubeMove], mut start: usize) -> Vec<(Self, Range<usize>)> {
         let mut res = Vec::new();
         loop {
-            let (adj, main, is_shifted) = match value[start..] {
-                [a, a_, b, ..] if a == a_ && a != b => (a.abs(), b, true),
-                [a, b, ..] if a != b => (a.abs(), b, false),
+            let (main, adj, is_shifted) = match value[start..] {
+                [a, a_, b, ..] if a == a_ && a != b => (a, b.abs(), true),
+                [a, b, ..] if a != b => (a, b.abs(), false),
                 _ => return res,
             };
             let order = &Self::KEYS[main as u8 as usize];

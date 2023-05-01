@@ -71,41 +71,45 @@ by `RR'`, since `RLRR'` will be sorted into `LR`.
 
 ### Key encoding and memorizable layout
 With the pseudo-canonical form, keys can be encoded into sequences of turns. The default
-keymap encodes each key as two non-commuting turns, such as `UF`. There are 8 of such
-operations with the same second symbol: `UF`, `RF`, `DF`, `LF`, `U'F`, `R'F`, `D'F`,
-`L'F`. The direction of the first symbol should not be considered, otherwise one cannot
-represent `LU'` followed by `UF` (`LU'UF` and `LF` are indistinguishable; it can be
-alternated by `LU'2F` since `U'F` and `UF` are assigned to the same key).
+keymap encodes each key as two non-commuting turns, such as `FU`. There are 8 of such
+operations with the same second symbol: `FU`, `FR`, `FD`, `FL`, `FU'`, `FR'`, `FD'`,
+`FL'`. The direction of the second symbol should not be considered, otherwise one cannot
+represent `FU'` followed by `UL` (`FU'UL` and `FL` are indistinguishable; it can be
+alternated by `FU2L` since `FU'` and `FU` are assigned to the same key).
 
-By grouping with the second symbol, a group contians 4 keys, and there are 12 symbols:
+By grouping with the first symbol, a group contians 4 keys, and there are 12 symbols:
 `U`, `D`, `L`, `R`, `F`, `B`, `U'`, `D'`, `L'`, `R'`, `F'`, `B'`. Furthermore, the first
 symbol can be replaced with a double turn. So there are 96 keys in total, which
 corresponds to 95 printable characters (0x20 ~ 0x7E) + enter key (0x0A).
 
 A part of table:
 
-|      | `L` | `B` | `R` | `F` | `L2` | `B2` | `R2` | `F2` |
-| ---- | --- | --- | --- | --- | ---- | ---- | ---- | ---- |
-| `U`  | d   | u   | c   | k   | D    | u    | c    | k    |
-| `U'` | (   | \[  | {   | <   | )    | ]    | }    | >    |
-| `D`  | n   | x   | j   | i   | N    | X    | J    | I    |
-| `D'` | \\  | +   | -   | *   | /    | =    | \|   | ^    |
+|       | `L` | `B` | `R` | `F` |
+| ----- | --- | --- | --- | --- |
+| `U`   | d   | u   | c   | k   |
+| `U2`  | D   | U   | C   | K   |
+| `U'`  | (   | \[  | {   | <   |
+| `U'2` | )   | ]   | }   | >   |
+| `D`   | i   | j   | x   | n   |
+| `D2`  | I   | J   | X   | N   |
+| `D'`  | -   | +   | //  | *   |
+| `D'2` | |   | =   | \\  | ^   |
 
-Where the first cell of each column indicates the first symbol, and the first cell of each
-row indicates the second symbol.
+Where the first cell of each row indicates the first symbol, and the first cell of each
+column indicates the second symbol.
 
 To visualize the keymap layout, imagine you're holding a white cube and placing each of
-the 4 keys of the symbol on the edge of the face. For example, the key of `LU` (that is,
-"k") should be placed on the left edge of the top face. In this way, there are four types
-of rubik's cube skins: the first symbol is single turn or double turn; the second symbol
-is clockwise or counterclockwise.
+the 4 keys of the symbol on the edge of the face. For example, the key of `UL` (that is,
+"d") should be placed on the left edge of the top face. In this way, there are four types
+of rubik's cube skins classified by the type of the first symbol: single clockwise turn,
+double clockwise turn, single counterclockwise turn and double counterclockwise turn.
 
 To remember them, read clockwise from the ULF corner (or DRB corner). For example, in the
-single turn and clockwise skin, all six faces are assigned to 6 words: "verb", "duck",
+skin of single clockwise turn, all six faces are assigned to 6 words: "verb", "duck",
 "flow", "myth", "gasp" and "jinx". And the double turn variant correspond to uppercase
 version. Two missing letters "z" and "q" are assigned to counterclockwise variants of "s"
 and "p". In the counterclockwise skins, numbers 0~9 and whitespace/enter are assigned to
-the left and right faces, note that whitespace and enter are assigned to `FR'` and `F2R'`,
+the left and right faces, note that whitespace and enter are assigned to `R'F` and `R'2F`,
 which are heavily used; brackets are assigned to the top face; punctuations are assigned
 to the front face; arithmetic symbols are assigned to the bottom face; other symbols are
 assigned to the back face.
