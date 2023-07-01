@@ -93,7 +93,7 @@ A part of table:
 | `D`   | i   | j   | x   | n   |
 | `D2`  | I   | J   | X   | N   |
 | `D'`  | -   | +   | //  | *   |
-| `D'2` | |   | =   | \\  | ^   |
+| `D'2` | \|  | =   | \\  | ^   |
 
 Where the first cell of each row indicates the first symbol, and the first cell of each
 column indicates the second symbol.
