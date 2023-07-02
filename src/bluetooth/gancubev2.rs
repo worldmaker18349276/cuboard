@@ -385,7 +385,7 @@ mod codec {
 
             Self::State {
                 count,
-                state: CubeState { corners, edges },
+                state: CubeState::new(corners, edges),
             }
         }
 

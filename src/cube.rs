@@ -81,6 +81,24 @@ impl TryFrom<(u8, u8)> for Edge {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct Center(pub PieceOrientation<4>);
+
+impl Display for Center {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.repr())
+    }
+}
+
+impl TryFrom<u8> for Center {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        let ori = PieceOrientation::from_repr(value).ok_or(())?;
+        Ok(Center(ori))
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Default)]
 pub struct PieceOrientation<const N: u8>(u8);
 
@@ -241,6 +259,7 @@ impl Neg for CubeOrientation {
 pub struct CubeState {
     pub corners: [Corner; 8],
     pub edges: [Edge; 12],
+    pub center: [Center; 6],
 }
 
 impl Default for CubeState {
@@ -257,7 +276,21 @@ impl Default for CubeState {
             .collect::<Vec<Edge>>()
             .try_into()
             .unwrap();
-        CubeState { corners, edges }
+        CubeState::new(corners, edges)
+    }
+}
+
+impl CubeState {
+    pub fn new(corners: [Corner; 8], edges: [Edge; 12]) -> Self {
+        CubeState {
+            corners,
+            edges,
+            center: [0.try_into().unwrap(); 6],
+        }
+    }
+
+    pub fn reset_centers(&mut self) {
+        self.center = [0.try_into().unwrap(); 6];
     }
 }
 
@@ -294,7 +327,7 @@ impl CubeMove {
     pub fn repr(self) -> u8 {
         self as u8
     }
-    
+
     pub fn is_clockwise(self) -> bool {
         self.repr() % 2 == 0
     }
