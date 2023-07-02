@@ -398,21 +398,29 @@ impl<F: Write, T: Iterator<Item = String>> CuboardInputTrainer<F, T> {
         let complete_part = self.input.complete_part();
         let remain_part = self.input.remain_part();
         const MAX_LEN: usize = 12;
-        if complete_part.len() + remain_part.len() > MAX_LEN {
-            let overflow = complete_part.len() + remain_part.len() - MAX_LEN;
-            let _ = write!(
-                self.terminal,
-                "\r\x1b[100m\x1b[2K…\x1b[4m{}\x1b[2m{}\x1b[m",
-                &complete_part[overflow + 1..],
-                remain_part,
-            );
-        } else {
-            let _ = write!(
-                self.terminal,
-                "\r\x1b[100m\x1b[2K\x1b[4m{}\x1b[2m{}\x1b[m",
-                complete_part, remain_part,
-            );
+
+        let complete_range = 0..complete_part.len();
+        let remain_range = complete_part.len()..complete_part.len() + remain_part.len();
+        let total = complete_part + &remain_part;
+        let mut visible_range = total.len().saturating_sub(MAX_LEN)..total.len();
+        if visible_range.start > 0 {
+            // remain space for overflow symbol
+            visible_range.start += 1;
         }
+        let visible_range = visible_range;
+
+        fn clamp(range1: &Range<usize>, range2: &Range<usize>) -> Range<usize> {
+            range1.start.clamp(range2.start, range2.end)..range1.end.clamp(range2.start, range2.end)
+        }
+        let complete_range = clamp(&complete_range, &visible_range);
+        let remain_range = clamp(&remain_range, &visible_range);
+        let overflow = if visible_range.start > 0 { "…" } else { "" };
+
+        let _ = write!(
+            self.terminal,
+            "\r\x1b[100m\x1b[2K{}\x1b[4m{}\x1b[2m{}\x1b[m",
+            overflow, &total[complete_range], &total[remain_range],
+        );
         let _ = self.terminal.flush();
     }
 }
