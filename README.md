@@ -132,7 +132,9 @@ The full cheatsheet can be drawn as:
 ## TODO
 - [ ] customize keymap.
 - [ ] remap orientation.
+- [ ] merge gancubev2-reverse-engineering.
+- [ ] SU(2) CubeState.
 - [ ] shake to cancel.
-- [ ] turn around to use another set of (action-based) keymap.
+- [ ] dual setting switch by turning around.
 - [ ] mimic keyboard event.
 - [ ] gui.
