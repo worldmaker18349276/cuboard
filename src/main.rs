@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let builder = 'a: loop {
         print!(".");
-        stdout().flush().unwrap();
+        let _ = stdout().flush();
 
         let found = GanCubeV2Builder::find_gancube_device(&adapter).await?;
         if let Some(builder) = found.into_iter().next() {
