@@ -6,67 +6,32 @@ use std::{
     ops::{Add, Neg},
 };
 
-#[rustfmt::skip]
+use strum_macros::{Display, EnumIter, FromRepr};
+
+// #[rustfmt::skip] // FromRepr break it
 #[allow(clippy::upper_case_acronyms)]
 #[repr(u8)]
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Display, EnumIter, FromRepr)]
 pub enum CornerPosition {
-    UFR, ULF, UBL, URB, DRF, DFL, DLB, DBR
+    URF, UFL, ULB, UBR, DFR, DLF, DBL, DRB,
 }
 
-impl CornerPosition {
-    pub const VALUES: [CornerPosition; 8] = {
-        use CornerPosition::*;
-        [UFR, ULF, UBL, URB, DRF, DFL, DLB, DBR]
-    };
-
-    const NAMES: [&str; 8] = ["UFR", "ULF", "UBL", "URB", "DRF", "DFL", "DLB", "DBR"];
-}
-
-impl TryFrom<u8> for CornerPosition {
-    type Error = ();
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        CornerPosition::VALUES
-            .get(value as usize)
-            .cloned()
-            .ok_or(())
-    }
-}
-
-#[rustfmt::skip]
 #[repr(u8)]
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Display, EnumIter, FromRepr)]
 pub enum CornerOrientation {
-    Normal, Clockwise, Counterclockwise
-}
-
-impl CornerOrientation {
-    pub const VALUES: [CornerOrientation; 3] = {
-        use CornerOrientation::*;
-        [Normal, Clockwise, Counterclockwise]
-    };
-}
-
-impl TryFrom<u8> for CornerOrientation {
-    type Error = ();
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        CornerOrientation::VALUES
-            .get(value as usize)
-            .cloned()
-            .ok_or(())
-    }
+    Normal,
+    Clockwise,
+    Counterclockwise,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Corner(pub CornerPosition, pub CornerOrientation);
 
-impl Corner {
-    pub fn show(self) -> String {
-        let name = CornerPosition::NAMES[self.0 as u8 as usize];
-        match self.1 {
-            CornerOrientation::Normal => name.to_owned(),
+impl Display for Corner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = self.0.to_string();
+        let name = match self.1 {
+            CornerOrientation::Normal => name,
             CornerOrientation::Clockwise => {
                 let mut name = name.chars().collect::<Box<_>>();
                 name.rotate_left(1);
@@ -77,7 +42,8 @@ impl Corner {
                 name.rotate_left(2);
                 name.iter().collect()
             }
-        }
+        };
+        write!(f, "{}", name)
     }
 }
 
@@ -85,74 +51,41 @@ impl TryFrom<(u8, u8)> for Corner {
     type Error = ();
 
     fn try_from(value: (u8, u8)) -> Result<Self, Self::Error> {
-        let pos = CornerPosition::try_from(value.0)?;
-        let ori = CornerOrientation::try_from(value.1)?;
+        let pos = CornerPosition::from_repr(value.0).ok_or(())?;
+        let ori = CornerOrientation::from_repr(value.1).ok_or(())?;
         Ok(Corner(pos, ori))
     }
 }
 
-#[rustfmt::skip]
+// #[rustfmt::skip]
 #[repr(u8)]
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Display, EnumIter, FromRepr)]
 pub enum EdgePosition {
-    UR, UF, UL, UB, DR, DF, DL, DB, FR, FL, BL, BR
+    UR, UF, UL, UB, DR, DF, DL, DB, FR, FL, BL, BR,
 }
 
-impl EdgePosition {
-    pub const VALUES: [EdgePosition; 12] = {
-        use EdgePosition::*;
-        [UR, UF, UL, UB, DR, DF, DL, DB, FR, FL, BL, BR]
-    };
-
-    const NAMES: [&str; 12] = [
-        "UR", "UF", "UL", "UB", "DR", "DF", "DL", "DB", "FR", "FL", "BL", "BR",
-    ];
-}
-
-impl TryFrom<u8> for EdgePosition {
-    type Error = ();
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        EdgePosition::VALUES.get(value as usize).cloned().ok_or(())
-    }
-}
-
-#[rustfmt::skip]
 #[repr(u8)]
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Display, EnumIter, FromRepr)]
 pub enum EdgeOrientation {
-    Normal, Flip
-}
-
-impl EdgeOrientation {
-    pub const VALUES: [EdgeOrientation; 2] = [EdgeOrientation::Normal, EdgeOrientation::Flip];
-}
-
-impl TryFrom<u8> for EdgeOrientation {
-    type Error = ();
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        EdgeOrientation::VALUES
-            .get(value as usize)
-            .cloned()
-            .ok_or(())
-    }
+    Normal,
+    Flip,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Edge(pub EdgePosition, pub EdgeOrientation);
 
-impl Edge {
-    pub fn show(self) -> String {
-        let name = EdgePosition::NAMES[self.0 as u8 as usize];
-        match self.1 {
-            EdgeOrientation::Normal => name.to_owned(),
+impl Display for Edge {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = self.0.to_string();
+        let name = match self.1 {
+            EdgeOrientation::Normal => name,
             EdgeOrientation::Flip => {
                 let mut name = name.chars().collect::<Box<_>>();
                 name.rotate_left(1);
                 name.iter().collect()
             }
-        }
+        };
+        write!(f, "{}", name)
     }
 }
 
@@ -160,11 +93,13 @@ impl TryFrom<(u8, u8)> for Edge {
     type Error = ();
 
     fn try_from(value: (u8, u8)) -> Result<Self, Self::Error> {
-        let pos = EdgePosition::try_from(value.0)?;
-        let ori = EdgeOrientation::try_from(value.1)?;
+        let pos = EdgePosition::from_repr(value.0).ok_or(())?;
+        let ori = EdgeOrientation::from_repr(value.1).ok_or(())?;
         Ok(Edge(pos, ori))
     }
 }
+
+// algebra
 
 impl Default for CornerOrientation {
     fn default() -> Self {
@@ -176,19 +111,19 @@ impl Add<CornerOrientation> for CornerOrientation {
     type Output = CornerOrientation;
 
     fn add(self, rhs: CornerOrientation) -> Self::Output {
-        Self::try_from((self as u8 + rhs as u8) % 3).unwrap()
+        Self::from_repr((self as u8 + rhs as u8) % 3).unwrap()
     }
 }
 
 impl Sum for CornerOrientation {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        Self::try_from(iter.map(|c| c as u8).sum::<u8>() % 3).unwrap()
+        Self::from_repr(iter.map(|c| c as u8).sum::<u8>() % 3).unwrap()
     }
 }
 
 impl<'a> Sum<&'a CornerOrientation> for CornerOrientation {
     fn sum<I: Iterator<Item = &'a CornerOrientation>>(iter: I) -> Self {
-        Self::try_from(iter.map(|c| *c as u8).sum::<u8>() % 3).unwrap()
+        Self::from_repr(iter.map(|c| *c as u8).sum::<u8>() % 3).unwrap()
     }
 }
 
@@ -196,7 +131,7 @@ impl Neg for CornerOrientation {
     type Output = CornerOrientation;
 
     fn neg(self) -> Self::Output {
-        Self::try_from((3 - self as u8) % 3).unwrap()
+        Self::from_repr((3 - self as u8) % 3).unwrap()
     }
 }
 
@@ -210,19 +145,19 @@ impl Add<EdgeOrientation> for EdgeOrientation {
     type Output = EdgeOrientation;
 
     fn add(self, rhs: EdgeOrientation) -> Self::Output {
-        Self::try_from((self as u8 + rhs as u8) % 2).unwrap()
+        Self::from_repr((self as u8 + rhs as u8) % 2).unwrap()
     }
 }
 
 impl Sum for EdgeOrientation {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        Self::try_from(iter.map(|c| c as u8).sum::<u8>() % 2).unwrap()
+        Self::from_repr(iter.map(|c| c as u8).sum::<u8>() % 2).unwrap()
     }
 }
 
 impl<'a> Sum<&'a EdgeOrientation> for EdgeOrientation {
     fn sum<I: Iterator<Item = &'a EdgeOrientation>>(iter: I) -> Self {
-        Self::try_from(iter.map(|c| *c as u8).sum::<u8>() % 2).unwrap()
+        Self::from_repr(iter.map(|c| *c as u8).sum::<u8>() % 2).unwrap()
     }
 }
 
@@ -230,7 +165,7 @@ impl Neg for EdgeOrientation {
     type Output = EdgeOrientation;
 
     fn neg(self) -> Self::Output {
-        // Self::try_from((2 - self as u8) % 2).unwrap()
+        // Self::from_repr((2 - self as u8) % 2).unwrap()
         self
     }
 }
@@ -339,6 +274,7 @@ impl From<CubeState> for CubeStateRaw {
 #[repr(u8)]
 pub enum CubeMove {
     U, Up, R, Rp, F, Fp, D, Dp, L, Lp, B, Bp
+    // for gancubev2:
     // U: white, R: red, F: green, D: yellow, L: orange, B: blue
 }
 

@@ -483,7 +483,7 @@ mod codec {
                 state
                     .corners
                     .iter()
-                    .map(|c| c.show())
+                    .map(|c| c.to_string())
                     .collect::<Vec<_>>()
                     .join(", ")
             );
@@ -493,7 +493,7 @@ mod codec {
                 state
                     .edges
                     .iter()
-                    .map(|c| c.show())
+                    .map(|c| c.to_string())
                     .collect::<Vec<_>>()
                     .join(", ")
             );
