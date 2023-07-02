@@ -68,14 +68,14 @@ impl Corner {
         match self.1 {
             CornerOrientation::Normal => name.to_owned(),
             CornerOrientation::Clockwise => {
-                let mut name = name.chars().collect::<Vec<_>>();
+                let mut name = name.chars().collect::<Box<_>>();
                 name.rotate_left(1);
-                name.into_iter().collect()
+                name.iter().collect()
             }
             CornerOrientation::Counterclockwise => {
-                let mut name = name.chars().collect::<Vec<_>>();
+                let mut name = name.chars().collect::<Box<_>>();
                 name.rotate_left(2);
-                name.into_iter().collect()
+                name.iter().collect()
             }
         }
     }
@@ -148,9 +148,9 @@ impl Edge {
         match self.1 {
             EdgeOrientation::Normal => name.to_owned(),
             EdgeOrientation::Flip => {
-                let mut name = name.chars().collect::<Vec<_>>();
+                let mut name = name.chars().collect::<Box<_>>();
                 name.rotate_left(1);
-                name.into_iter().collect()
+                name.iter().collect()
             }
         }
     }
@@ -395,24 +395,6 @@ impl CubeMove {
             D | Dp => D,
             L | Lp => L,
             B | Bp => B,
-        }
-    }
-
-    pub fn mirror(self) -> Self {
-        use CubeMove::*;
-        match self {
-            U => Dp,
-            Up => D,
-            R => Lp,
-            Rp => L,
-            F => Bp,
-            Fp => B,
-            D => Up,
-            Dp => U,
-            L => Rp,
-            Lp => R,
-            B => Fp,
-            Bp => F,
         }
     }
 
