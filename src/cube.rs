@@ -226,7 +226,7 @@ impl CubeOrientation {
         Self::from_str(&name).ok()
     }
 
-    fn is_mirror(self) -> bool {
+    pub fn is_mirror(self) -> bool {
         self as u8 >= 24
     }
 }
@@ -391,43 +391,19 @@ impl CubeMove {
     }
 
     pub fn rev(self) -> Self {
-        use CubeMove::*;
-        match self {
-            U => Up,
-            Up => U,
-            R => Rp,
-            Rp => R,
-            F => Fp,
-            Fp => F,
-            D => Dp,
-            Dp => D,
-            L => Lp,
-            Lp => L,
-            B => Bp,
-            Bp => B,
-        }
+        let repr = self as u8;
+        let (ind, dir) = (repr / 2, repr % 2);
+        let dir = (dir + 1) % 2;
+        let repr = ind * 2 + dir;
+        Self::from_repr(repr).unwrap()
     }
 
     pub fn abs(self) -> Self {
-        use CubeMove::*;
-        match self {
-            U | Up => U,
-            R | Rp => R,
-            F | Fp => F,
-            D | Dp => D,
-            L | Lp => L,
-            B | Bp => B,
-        }
+        Self::from_repr(self as u8 / 2 * 2).unwrap()
     }
 
     pub fn commute(self, other: Self) -> bool {
-        use CubeMove::*;
-        matches!(
-            (self, other),
-            (U | Up | D | Dp, U | Up | D | Dp)
-                | (R | Rp | L | Lp, R | Rp | L | Lp)
-                | (F | Fp | B | Bp, F | Fp | B | Bp)
-        )
+        self as u8 / 2 % 3 == other as u8 / 2 % 3
     }
 
     pub fn transform(self, trans: CubeOrientation) -> Self {
