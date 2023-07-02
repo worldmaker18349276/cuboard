@@ -17,8 +17,7 @@ mod cuboard;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let args: Vec<String> = std::env::args().collect();
-    let text_filename: Option<String> = args.get(1).cloned();
+    let text_filename = std::env::args().nth(1);
 
     // get the first bluetooth adapter
     let manager = platform::Manager::new().await.unwrap();
@@ -49,15 +48,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("connected! have fun~");
     println!();
 
-    println!("{}", make_cheatsheet(DEFAULT_KEYMAP));
+    let input = CuboardInput::new(DEFAULT_KEYMAP);
+    println!("{}", input.make_cheatsheet());
     println!();
 
-    let input = CuboardInput::new(DEFAULT_KEYMAP);
     let input_handler: Box<dyn FnMut(ResponseMessage) + Send> =
         if let Some(text_filename) = text_filename {
             let text = BufReader::new(File::open(text_filename)?)
                 .lines()
-                .map(|l| l.unwrap());
+                .map_while(|l| l.ok());
             let mut trainer = CuboardInputTrainer::new(stdout(), input, text, 3);
             Box::new(move |msg| trainer.handle_message(msg))
         } else {
@@ -72,58 +71,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     handle.await?;
 
     Ok(())
-}
-
-fn make_cheatsheet(keymap: CuboardKeymap) -> String {
-    const STYLED_TEMPLATE: &str = "
-     \x1b[30;44m  {B.3}  \x1b[m     
-     \x1b[30;44m{B.2}   {B.0}\x1b[m     
-     \x1b[30;44m  {B.1}  \x1b[m     
-     \x1b[30;47m  {U.1}  \x1b[m     
-     \x1b[30;47m{U.0}   {U.2}\x1b[m     
-     \x1b[30;47m  {U.3}  \x1b[m     
-\x1b[30;45m  {L.3}  \x1b[42m  {F.0}  \x1b[41m  {R.2}  \x1b[m
-\x1b[30;45m{L.2}   {L.0}\x1b[42m{F.3}   {F.1}\x1b[41m{R.1}   {R.3}\x1b[m
-\x1b[30;45m  {L.1}  \x1b[42m  {F.2}  \x1b[41m  {R.0}  \x1b[m
-     \x1b[30;43m  {D.2}  \x1b[m     
-     \x1b[30;43m{D.1}   {D.3}\x1b[m     
-     \x1b[30;43m  {D.0}  \x1b[m     
-";
-    const STYLED_TEMPLATE_BAR: &str = "CHEAT SHEET:
-     double     |      single     |     single      |     double
-    clockwise   |     clockwise   |counter-clockwise|counter-clockwise
-----------------|-----------------|-----------------|-----------------
-";
-    use cube::CubeMove::*;
-    let mut a = STYLED_TEMPLATE.to_string();
-    let mut b = STYLED_TEMPLATE.to_string();
-    let mut c = STYLED_TEMPLATE.to_string();
-    let mut d = STYLED_TEMPLATE.to_string();
-
-    for side in [U, D, F, B, L, R] {
-        for i in 0..4 {
-            fn f(s: &str) -> String {
-                s.replace('\n', "↵").replace(' ', "⌴")
-            }
-            let name = format!("{{{}.{}}}", &side.to_string(), i);
-            a = a.replace(&name, &f(keymap[1][side as u8 as usize][i]));
-            b = b.replace(&name, &f(keymap[0][side as u8 as usize][i]));
-            c = c.replace(&name, &f(keymap[0][side.rev() as u8 as usize][i]));
-            d = d.replace(&name, &f(keymap[1][side.rev() as u8 as usize][i]));
-        }
-    }
-
-    let a = a.trim_matches('\n').split('\n');
-    let b = b.trim_matches('\n').split('\n');
-    let c = c.trim_matches('\n').split('\n');
-    let d = d.trim_matches('\n').split('\n');
-    STYLED_TEMPLATE_BAR.to_string()
-        + &a.zip(b)
-            .zip(c)
-            .zip(d)
-            .map(|(((a, b), c), d)| [a, b, c, d].join(" | "))
-            .collect::<Vec<_>>()
-            .join("\n")
 }
 
 struct CuboardInput {
@@ -190,6 +137,58 @@ impl CuboardInput {
 
     fn remain_part(&self) -> String {
         format_moves(self.buffer.remains())
+    }
+
+    fn make_cheatsheet(&self) -> String {
+        const STYLED_TEMPLATE: &str = "
+     \x1b[30;44m  {B.3}  \x1b[m     
+     \x1b[30;44m{B.2}   {B.0}\x1b[m     
+     \x1b[30;44m  {B.1}  \x1b[m     
+     \x1b[30;47m  {U.1}  \x1b[m     
+     \x1b[30;47m{U.0}   {U.2}\x1b[m     
+     \x1b[30;47m  {U.3}  \x1b[m     
+\x1b[30;45m  {L.3}  \x1b[42m  {F.0}  \x1b[41m  {R.2}  \x1b[m
+\x1b[30;45m{L.2}   {L.0}\x1b[42m{F.3}   {F.1}\x1b[41m{R.1}   {R.3}\x1b[m
+\x1b[30;45m  {L.1}  \x1b[42m  {F.2}  \x1b[41m  {R.0}  \x1b[m
+     \x1b[30;43m  {D.2}  \x1b[m     
+     \x1b[30;43m{D.1}   {D.3}\x1b[m     
+     \x1b[30;43m  {D.0}  \x1b[m     
+";
+        const STYLED_TEMPLATE_BAR: &str = "CHEAT SHEET:
+     double     |      single     |     single      |     double
+    clockwise   |     clockwise   |counter-clockwise|counter-clockwise
+----------------|-----------------|-----------------|-----------------
+";
+        use cube::CubeMove::*;
+        let mut a = STYLED_TEMPLATE.to_string();
+        let mut b = STYLED_TEMPLATE.to_string();
+        let mut c = STYLED_TEMPLATE.to_string();
+        let mut d = STYLED_TEMPLATE.to_string();
+
+        for side in [U, D, F, B, L, R] {
+            for i in 0..4 {
+                fn f(s: &str) -> String {
+                    s.replace('\n', "↵").replace(' ', "⌴")
+                }
+                let name = format!("{{{}.{}}}", &side.to_string(), i);
+                a = a.replace(&name, &f(self.keymap[1][side as u8 as usize][i]));
+                b = b.replace(&name, &f(self.keymap[0][side as u8 as usize][i]));
+                c = c.replace(&name, &f(self.keymap[0][side.rev() as u8 as usize][i]));
+                d = d.replace(&name, &f(self.keymap[1][side.rev() as u8 as usize][i]));
+            }
+        }
+
+        let a = a.trim_matches('\n').split('\n');
+        let b = b.trim_matches('\n').split('\n');
+        let c = c.trim_matches('\n').split('\n');
+        let d = d.trim_matches('\n').split('\n');
+        STYLED_TEMPLATE_BAR.to_string()
+            + &a.zip(b)
+                .zip(c)
+                .zip(d)
+                .map(|(((a, b), c), d)| [a, b, c, d].join(" | "))
+                .collect::<Vec<_>>()
+                .join("\n")
     }
 }
 
@@ -294,11 +293,9 @@ struct CuboardInputTrainer<F: Write, T: Iterator<Item = String>> {
 
 impl<F: Write, T: Iterator<Item = String>> CuboardInputTrainer<F, T> {
     fn new(terminal: F, input: CuboardInput, mut text: T, margin: usize) -> Self {
-        let mut lines = Vec::new();
-        for _ in 0..margin {
-            lines.push(text.next().unwrap_or_default())
-        }
-        let lines = lines.try_into().unwrap();
+        let lines = (0..margin)
+            .map(|_| text.next().unwrap_or_default())
+            .collect();
         CuboardInputTrainer {
             terminal,
             input,
