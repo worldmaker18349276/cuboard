@@ -1,11 +1,11 @@
 use btleplug::api::{Central, Manager, ScanFilter};
 use btleplug::platform;
 use cube::format_moves;
-use tokio::time::{sleep, Duration};
 use std::error::Error;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Write, stdout};
+use std::io::{stdout, BufRead, BufReader, Write};
 use std::ops::Range;
+use tokio::time::{sleep, Duration};
 
 use bluetooth::gancubev2::{GanCubeV2Builder, ResponseMessage};
 
@@ -58,10 +58,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let text = BufReader::new(File::open(text_filename)?)
                 .lines()
                 .map(|l| l.unwrap());
-            let mut trainer = CuboardInputTrainer::new(input, text, 3);
+            let mut trainer = CuboardInputTrainer::new(stdout(), input, text, 3);
             Box::new(move |msg| trainer.handle_message(msg))
         } else {
-            let mut printer = CuboardInputPrinter::new(input);
+            let mut printer = CuboardInputPrinter::new(stdout(), input);
             Box::new(move |msg| printer.handle_message(msg))
         };
     let handle = gancube.register_handler(input_handler).await?;
@@ -193,13 +193,14 @@ impl CuboardInput {
     }
 }
 
-struct CuboardInputPrinter {
+struct CuboardInputPrinter<F: Write> {
+    terminal: F,
     input: CuboardInput,
 }
 
-impl CuboardInputPrinter {
-    fn new(input: CuboardInput) -> Self {
-        CuboardInputPrinter { input }
+impl<F: Write> CuboardInputPrinter<F> {
+    fn new(terminal: F, input: CuboardInput) -> Self {
+        CuboardInputPrinter { terminal, input }
     }
 
     fn handle_message(&mut self, msg: ResponseMessage) {
@@ -207,8 +208,8 @@ impl CuboardInputPrinter {
         if self.input.count.is_none() {
             if let ResponseMessage::State { count, state: _ } = msg {
                 self.input.count = Some(count);
-                print!("\r\x1b[7m \x1b[m\n\x1b[100m\x1b[2K\x1b[m");
-                let _ = stdout().flush();
+                let _ = write!(self.terminal, "\r\x1b[7m \x1b[m\n\x1b[100m\x1b[2K\x1b[m");
+                let _ = self.terminal.flush();
             }
             return;
         }
@@ -220,7 +221,7 @@ impl CuboardInputPrinter {
                 times: _,
             } => (count, moves),
             ResponseMessage::Disconnect => {
-                println!();
+                let _ = writeln!(self.terminal);
                 return;
             }
             _ => {
@@ -239,7 +240,11 @@ impl CuboardInputPrinter {
         }
 
         let text = self.input.text();
-        print!("\x1b[A\r\x1b[2K{}\x1b[K\x1b[0;7m \x1b[m\n", text);
+        let _ = write!(
+            self.terminal,
+            "\x1b[A\r\x1b[2K{}\x1b[K\x1b[0;7m \x1b[m\n",
+            text
+        );
         if text.contains('\n') {
             assert!(!text[..text.len() - 1].contains('\n'));
             self.input.buffer.finish();
@@ -266,28 +271,35 @@ impl CuboardInputPrinter {
         let remain_range = clamp(&remain_range, &visible_range);
         let overflow = if visible_range.start > 0 { "…" } else { "" };
 
-        print!(
+        let _ = write!(
+            self.terminal,
             "\r\x1b[100m\x1b[2K{}\x1b[4m{}\x1b[2m{}\x1b[m",
             overflow, &total[complete_range], &total[remain_range],
         );
-        let _ = stdout().flush();
+        let _ = self.terminal.flush();
     }
 }
 
-struct CuboardInputTrainer<T: Iterator<Item = String>> {
+struct CuboardInputTrainer<F: Write, T: Iterator<Item = String>> {
+    terminal: F,
     input: CuboardInput,
     text: T,
     lines: Box<[String]>,
 }
 
-impl<T: Iterator<Item = String>> CuboardInputTrainer<T> {
-    fn new(input: CuboardInput, mut text: T, margin: usize) -> Self {
+impl<F: Write, T: Iterator<Item = String>> CuboardInputTrainer<F, T> {
+    fn new(terminal: F, input: CuboardInput, mut text: T, margin: usize) -> Self {
         let mut lines = Vec::new();
         for _ in 0..margin {
             lines.push(text.next().unwrap_or_default())
         }
         let lines = lines.try_into().unwrap();
-        CuboardInputTrainer { input, text, lines }
+        CuboardInputTrainer {
+            terminal,
+            input,
+            text,
+            lines,
+        }
     }
 
     fn handle_message(&mut self, msg: ResponseMessage) {
@@ -296,13 +308,13 @@ impl<T: Iterator<Item = String>> CuboardInputTrainer<T> {
                 self.input.count = Some(count);
 
                 let cursor = self.lines[0].chars().next().unwrap_or(' ');
-                print!("\x1b[2m{}\x1b[m", self.lines[0]);
-                print!("\r\x1b[7m{}\x1b[m\n", cursor);
+                let _ = write!(self.terminal, "\x1b[2m{}\x1b[m", self.lines[0]);
+                let _ = write!(self.terminal, "\r\x1b[7m{}\x1b[m\n", cursor);
                 for line in self.lines.iter().skip(1) {
-                    println!("\x1b[2m{}\x1b[m", line);
+                    let _ = writeln!(self.terminal, "\x1b[2m{}\x1b[m", line);
                 }
-                print!("\r\x1b[100m\x1b[2K \x1b[m\r");
-                let _ = stdout().flush();
+                let _ = write!(self.terminal, "\r\x1b[100m\x1b[2K \x1b[m\r");
+                let _ = self.terminal.flush();
             }
 
             return;
@@ -315,7 +327,7 @@ impl<T: Iterator<Item = String>> CuboardInputTrainer<T> {
                 times: _,
             } => (count, moves),
             ResponseMessage::Disconnect => {
-                println!();
+                let _ = writeln!(self.terminal);
                 return;
             }
             _ => {
@@ -333,9 +345,9 @@ impl<T: Iterator<Item = String>> CuboardInputTrainer<T> {
             }
         }
 
-        print!("\x1b[{}A", self.lines.len());
+        let _ = write!(self.terminal, "\x1b[{}A", self.lines.len());
         for line in self.lines.iter() {
-            println!("\r\x1b[2m\x1b[2K{}\x1b[m", line);
+            let _ = writeln!(self.terminal, "\r\x1b[2m\x1b[2K{}\x1b[m", line);
         }
 
         let text = self.input.text();
@@ -352,20 +364,32 @@ impl<T: Iterator<Item = String>> CuboardInputTrainer<T> {
             })
             .collect();
 
-        print!("\x1b[{}A", self.lines.len());
+        let _ = write!(self.terminal, "\x1b[{}A", self.lines.len());
         if text.contains('\n') {
             let cursor = self.lines[1].chars().next().unwrap_or(' ');
-            print!("\r{}\n\x1b[7m{}\x1b[m", decoreated_text, cursor);
+            let _ = write!(
+                self.terminal,
+                "\r{}\n\x1b[7m{}\x1b[m",
+                decoreated_text, cursor
+            );
         } else {
             let cursor = self.lines[0].chars().nth(text.len()).unwrap_or(' ');
-            print!("\r{}\x1b[7m{}\x1b[m\n", decoreated_text, cursor);
+            let _ = write!(
+                self.terminal,
+                "\r{}\x1b[7m{}\x1b[m\n",
+                decoreated_text, cursor
+            );
         }
-        print!("\x1b[{}B\r", self.lines.len() - 1);
+        let _ = write!(self.terminal, "\x1b[{}B\r", self.lines.len() - 1);
 
         if text.contains('\n') {
             assert!(!text[..text.len() - 1].contains('\n'));
             let new_line = self.text.next().unwrap_or_default();
-            print!("\r\x1b[m\x1b[2K\r\x1b[2m{}\x1b[m\n", new_line);
+            let _ = write!(
+                self.terminal,
+                "\r\x1b[m\x1b[2K\r\x1b[2m{}\x1b[m\n",
+                new_line
+            );
             self.input.buffer.finish();
             self.lines.rotate_left(1);
             self.lines[self.lines.len() - 1] = new_line;
@@ -376,17 +400,19 @@ impl<T: Iterator<Item = String>> CuboardInputTrainer<T> {
         const MAX_LEN: usize = 12;
         if complete_part.len() + remain_part.len() > MAX_LEN {
             let overflow = complete_part.len() + remain_part.len() - MAX_LEN;
-            print!(
+            let _ = write!(
+                self.terminal,
                 "\r\x1b[100m\x1b[2K…\x1b[4m{}\x1b[2m{}\x1b[m",
                 &complete_part[overflow + 1..],
                 remain_part,
             );
         } else {
-            print!(
+            let _ = write!(
+                self.terminal,
                 "\r\x1b[100m\x1b[2K\x1b[4m{}\x1b[2m{}\x1b[m",
                 complete_part, remain_part,
             );
         }
-        let _ = stdout().flush();
+        let _ = self.terminal.flush();
     }
 }
