@@ -16,33 +16,15 @@ pub enum CornerPosition {
     URF, UFL, ULB, UBR, DFR, DLF, DBL, DRB,
 }
 
-#[repr(u8)]
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Display, EnumIter, FromRepr)]
-pub enum CornerOrientation {
-    Normal,
-    Clockwise,
-    Counterclockwise,
-}
-
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct Corner(pub CornerPosition, pub CornerOrientation);
+pub struct Corner(pub CornerPosition, pub PieceOrientation<3>);
 
 impl Display for Corner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name = self.0.to_string();
-        let name = match self.1 {
-            CornerOrientation::Normal => name,
-            CornerOrientation::Clockwise => {
-                let mut name = name.chars().collect::<Box<_>>();
-                name.rotate_left(1);
-                name.iter().collect()
-            }
-            CornerOrientation::Counterclockwise => {
-                let mut name = name.chars().collect::<Box<_>>();
-                name.rotate_left(2);
-                name.iter().collect()
-            }
-        };
+        let mut name = name.chars().collect::<Box<_>>();
+        name.rotate_left(self.1.value() as usize);
+        let name = name.iter().collect::<String>();
         write!(f, "{}", name)
     }
 }
@@ -52,7 +34,7 @@ impl TryFrom<(u8, u8)> for Corner {
 
     fn try_from(value: (u8, u8)) -> Result<Self, Self::Error> {
         let pos = CornerPosition::from_repr(value.0).ok_or(())?;
-        let ori = CornerOrientation::from_repr(value.1).ok_or(())?;
+        let ori = PieceOrientation::new(value.1).ok_or(())?;
         Ok(Corner(pos, ori))
     }
 }
@@ -64,27 +46,15 @@ pub enum EdgePosition {
     UR, UF, UL, UB, DR, DF, DL, DB, FR, FL, BL, BR,
 }
 
-#[repr(u8)]
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Display, EnumIter, FromRepr)]
-pub enum EdgeOrientation {
-    Normal,
-    Flip,
-}
-
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct Edge(pub EdgePosition, pub EdgeOrientation);
+pub struct Edge(pub EdgePosition, pub PieceOrientation<2>);
 
 impl Display for Edge {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name = self.0.to_string();
-        let name = match self.1 {
-            EdgeOrientation::Normal => name,
-            EdgeOrientation::Flip => {
-                let mut name = name.chars().collect::<Box<_>>();
-                name.rotate_left(1);
-                name.iter().collect()
-            }
-        };
+        let mut name = name.chars().collect::<Box<_>>();
+        name.rotate_left(self.1.value() as usize);
+        let name = name.iter().collect::<String>();
         write!(f, "{}", name)
     }
 }
@@ -94,79 +64,55 @@ impl TryFrom<(u8, u8)> for Edge {
 
     fn try_from(value: (u8, u8)) -> Result<Self, Self::Error> {
         let pos = EdgePosition::from_repr(value.0).ok_or(())?;
-        let ori = EdgeOrientation::from_repr(value.1).ok_or(())?;
+        let ori = PieceOrientation::new(value.1).ok_or(())?;
         Ok(Edge(pos, ori))
     }
 }
 
 // algebra
 
-impl Default for CornerOrientation {
-    fn default() -> Self {
-        CornerOrientation::Normal
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Default)]
+pub struct PieceOrientation<const N: u8>(u8);
+
+impl<const N: u8> PieceOrientation<N> {
+    fn new(repr: u8) -> Option<Self> {
+        if (0..N).contains(&repr) {
+            Some(PieceOrientation(repr))
+        } else {
+            None
+        }
+    }
+
+    fn value(self) -> u8 {
+        self.0
     }
 }
 
-impl Add<CornerOrientation> for CornerOrientation {
-    type Output = CornerOrientation;
+impl<const N: u8> Add<PieceOrientation<N>> for PieceOrientation<N> {
+    type Output = PieceOrientation<N>;
 
-    fn add(self, rhs: CornerOrientation) -> Self::Output {
-        Self::from_repr((self as u8 + rhs as u8) % 3).unwrap()
+    fn add(self, rhs: PieceOrientation<N>) -> Self::Output {
+        Self::new((self.value() + rhs.value()) % N).unwrap()
     }
 }
 
-impl Sum for CornerOrientation {
+impl<const N: u8> Sum for PieceOrientation<N> {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        Self::from_repr(iter.map(|c| c as u8).sum::<u8>() % 3).unwrap()
+        Self::new(iter.map(|c| c.value()).sum::<u8>() % N).unwrap()
     }
 }
 
-impl<'a> Sum<&'a CornerOrientation> for CornerOrientation {
-    fn sum<I: Iterator<Item = &'a CornerOrientation>>(iter: I) -> Self {
-        Self::from_repr(iter.map(|c| *c as u8).sum::<u8>() % 3).unwrap()
+impl<'a, const N: u8> Sum<&'a PieceOrientation<N>> for PieceOrientation<N> {
+    fn sum<I: Iterator<Item = &'a PieceOrientation<N>>>(iter: I) -> Self {
+        Self::new(iter.map(|c| c.value()).sum::<u8>() % N).unwrap()
     }
 }
 
-impl Neg for CornerOrientation {
-    type Output = CornerOrientation;
+impl<const N: u8> Neg for PieceOrientation<N> {
+    type Output = PieceOrientation<N>;
 
     fn neg(self) -> Self::Output {
-        Self::from_repr((3 - self as u8) % 3).unwrap()
-    }
-}
-
-impl Default for EdgeOrientation {
-    fn default() -> Self {
-        EdgeOrientation::Normal
-    }
-}
-
-impl Add<EdgeOrientation> for EdgeOrientation {
-    type Output = EdgeOrientation;
-
-    fn add(self, rhs: EdgeOrientation) -> Self::Output {
-        Self::from_repr((self as u8 + rhs as u8) % 2).unwrap()
-    }
-}
-
-impl Sum for EdgeOrientation {
-    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        Self::from_repr(iter.map(|c| c as u8).sum::<u8>() % 2).unwrap()
-    }
-}
-
-impl<'a> Sum<&'a EdgeOrientation> for EdgeOrientation {
-    fn sum<I: Iterator<Item = &'a EdgeOrientation>>(iter: I) -> Self {
-        Self::from_repr(iter.map(|c| *c as u8).sum::<u8>() % 2).unwrap()
-    }
-}
-
-impl Neg for EdgeOrientation {
-    type Output = EdgeOrientation;
-
-    fn neg(self) -> Self::Output {
-        // Self::from_repr((2 - self as u8) % 2).unwrap()
-        self
+        Self::new((N - self.value()) % N).unwrap()
     }
 }
 
@@ -346,7 +292,7 @@ impl From<CubeState> for CubeStateRaw {
         let corners_orientation: [u8; 8] = value
             .corners
             .into_iter()
-            .map(|c| c.1 as u8)
+            .map(|c| c.1.value())
             .collect::<Vec<_>>()
             .try_into()
             .unwrap();
@@ -362,7 +308,7 @@ impl From<CubeState> for CubeStateRaw {
         let edges_orientation: [u8; 12] = value
             .edges
             .into_iter()
-            .map(|c| c.1 as u8)
+            .map(|c| c.1.value())
             .collect::<Vec<_>>()
             .try_into()
             .unwrap();
