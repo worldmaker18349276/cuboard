@@ -323,12 +323,32 @@ impl From<CubeState> for CubeStateRaw {
 }
 
 // #[rustfmt::skip]
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Display, EnumIter, FromRepr)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, EnumIter, FromRepr)]
 #[repr(u8)]
 pub enum CubeMove {
     U, Up, R, Rp, F, Fp, D, Dp, L, Lp, B, Bp,
     // for gancubev2:
     // U: white, R: red, F: green, D: yellow, L: orange, B: blue
+}
+
+impl Display for CubeMove {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use CubeMove::*;
+        match self {
+            U => write!(f, "U"),
+            Up => write!(f, "U'"),
+            R => write!(f, "R"),
+            Rp => write!(f, "R'"),
+            F => write!(f, "F"),
+            Fp => write!(f, "F'"),
+            D => write!(f, "D"),
+            Dp => write!(f, "D'"),
+            L => write!(f, "L"),
+            Lp => write!(f, "L'"),
+            B => write!(f, "B"),
+            Bp => write!(f, "B'"),
+        }
+    }
 }
 
 impl CubeMove {
