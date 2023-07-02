@@ -58,7 +58,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let text = BufReader::new(File::open(text_filename)?)
                 .lines()
                 .map(|l| l.unwrap());
-            let mut trainer = CuboardInputTrainer::<_, 3>::new(input, text);
+            let mut trainer = CuboardInputTrainer::new(input, text, 3);
             Box::new(move |msg| trainer.handle_message(msg))
         } else {
             let mut printer = CuboardInputPrinter::new(input);
@@ -203,6 +203,7 @@ impl CuboardInputPrinter {
     }
 
     fn handle_message(&mut self, msg: ResponseMessage) {
+        // ignore messages until the current count is known
         if self.input.count.is_none() {
             if let ResponseMessage::State { count, state: _ } = msg {
                 self.input.count = Some(count);
@@ -253,8 +254,10 @@ impl CuboardInputPrinter {
         let total = complete_part + &remain_part;
         let mut visible_range = total.len().saturating_sub(MAX_LEN)..total.len();
         if visible_range.start > 0 {
+            // remain space for overflow symbol
             visible_range.start += 1;
         }
+        let visible_range = visible_range;
 
         fn clamp(range1: &Range<usize>, range2: &Range<usize>) -> Range<usize> {
             range1.start.clamp(range2.start, range2.end)..range1.end.clamp(range2.start, range2.end)
@@ -271,16 +274,16 @@ impl CuboardInputPrinter {
     }
 }
 
-struct CuboardInputTrainer<T: Iterator<Item = String>, const N: usize> {
+struct CuboardInputTrainer<T: Iterator<Item = String>> {
     input: CuboardInput,
     text: T,
-    lines: [String; N],
+    lines: Box<[String]>,
 }
 
-impl<T: Iterator<Item = String>, const N: usize> CuboardInputTrainer<T, N> {
-    fn new(input: CuboardInput, mut text: T) -> Self {
+impl<T: Iterator<Item = String>> CuboardInputTrainer<T> {
+    fn new(input: CuboardInput, mut text: T, margin: usize) -> Self {
         let mut lines = Vec::new();
-        for _ in 0..N {
+        for _ in 0..margin {
             lines.push(text.next().unwrap_or_default())
         }
         let lines = lines.try_into().unwrap();
@@ -330,7 +333,7 @@ impl<T: Iterator<Item = String>, const N: usize> CuboardInputTrainer<T, N> {
             }
         }
 
-        print!("\x1b[{}A", N);
+        print!("\x1b[{}A", self.lines.len());
         for line in self.lines.iter() {
             println!("\r\x1b[2m\x1b[2K{}\x1b[m", line);
         }
@@ -349,7 +352,7 @@ impl<T: Iterator<Item = String>, const N: usize> CuboardInputTrainer<T, N> {
             })
             .collect();
 
-        print!("\x1b[{}A", N);
+        print!("\x1b[{}A", self.lines.len());
         if text.contains('\n') {
             let cursor = self.lines[1].chars().next().unwrap_or(' ');
             print!("\r{}\n\x1b[7m{}\x1b[m", decoreated_text, cursor);
@@ -357,7 +360,7 @@ impl<T: Iterator<Item = String>, const N: usize> CuboardInputTrainer<T, N> {
             let cursor = self.lines[0].chars().nth(text.len()).unwrap_or(' ');
             print!("\r{}\x1b[7m{}\x1b[m\n", decoreated_text, cursor);
         }
-        print!("\x1b[{}B\r", N - 1);
+        print!("\x1b[{}B\r", self.lines.len() - 1);
 
         if text.contains('\n') {
             assert!(!text[..text.len() - 1].contains('\n'));
@@ -365,7 +368,7 @@ impl<T: Iterator<Item = String>, const N: usize> CuboardInputTrainer<T, N> {
             print!("\r\x1b[m\x1b[2K\r\x1b[2m{}\x1b[m\n", new_line);
             self.input.buffer.finish();
             self.lines.rotate_left(1);
-            self.lines[N - 1] = new_line;
+            self.lines[self.lines.len() - 1] = new_line;
         }
 
         let complete_part = self.input.complete_part();
