@@ -223,25 +223,7 @@ impl Neg for CubeOrientation {
     }
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
-pub struct CubeStateRaw {
-    pub corners_position: [u8; 8],
-    pub corners_orientation: [u8; 8],
-    pub edges_position: [u8; 12],
-    pub edges_orientation: [u8; 12],
-}
-
-impl Default for CubeStateRaw {
-    fn default() -> Self {
-        CubeStateRaw {
-            corners_position: [0, 1, 2, 3, 4, 5, 6, 7],
-            corners_orientation: [0; 8],
-            edges_position: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-            edges_orientation: [0; 12],
-        }
-    }
-}
-
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct CubeState {
     pub corners: [Corner; 8],
     pub edges: [Edge; 12],
@@ -249,76 +231,19 @@ pub struct CubeState {
 
 impl Default for CubeState {
     fn default() -> Self {
-        Self::try_from(CubeStateRaw::default()).unwrap()
-    }
-}
-
-impl TryFrom<CubeStateRaw> for CubeState {
-    type Error = ();
-
-    fn try_from(value: CubeStateRaw) -> Result<Self, Self::Error> {
-        let corners: [Corner; 8] = value
-            .corners_position
+        let corners: [Corner; 8] = (0..8)
             .into_iter()
-            .zip(value.corners_orientation)
-            .map(|v| v.try_into())
-            .collect::<Result<Vec<Corner>, ()>>()?
+            .map(|i| (i, 0).try_into().unwrap())
+            .collect::<Vec<Corner>>()
             .try_into()
             .unwrap();
-
-        let edges: [Edge; 12] = value
-            .edges_position
+        let edges: [Edge; 12] = (0..12)
             .into_iter()
-            .zip(value.edges_orientation)
-            .map(|v| v.try_into())
-            .collect::<Result<Vec<Edge>, ()>>()?
+            .map(|i| (i, 0).try_into().unwrap())
+            .collect::<Vec<Edge>>()
             .try_into()
             .unwrap();
-
-        Ok(CubeState { corners, edges })
-    }
-}
-
-impl From<CubeState> for CubeStateRaw {
-    fn from(value: CubeState) -> Self {
-        let corners_position: [u8; 8] = value
-            .corners
-            .into_iter()
-            .map(|c| c.0 as u8)
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
-
-        let corners_orientation: [u8; 8] = value
-            .corners
-            .into_iter()
-            .map(|c| u8::from(c.1))
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
-
-        let edges_position: [u8; 12] = value
-            .edges
-            .into_iter()
-            .map(|c| c.0 as u8)
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
-
-        let edges_orientation: [u8; 12] = value
-            .edges
-            .into_iter()
-            .map(|c| u8::from(c.1))
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
-
-        CubeStateRaw {
-            corners_position,
-            corners_orientation,
-            edges_position,
-            edges_orientation,
-        }
+        CubeState { corners, edges }
     }
 }
 
