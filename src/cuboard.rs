@@ -105,57 +105,63 @@ impl CuboardBuffer {
     }
 
     pub fn input(&mut self, mv: CubeMove) -> bool {
-        let tail = self
+        trait FirstAndLast: Iterator {
+            fn first_and_last(self) -> Option<(Self::Item, Self::Item)>;
+        }
+
+        impl<E: Copy, I: Iterator<Item = E>> FirstAndLast for I {
+            fn first_and_last(mut self) -> Option<(E, E)> {
+                match self.next() {
+                    None => None,
+                    Some(first) => match self.last() {
+                        None => Some((first, first)),
+                        Some(last) => Some((first, last)),
+                    },
+                }
+            }
+        }
+
+        let collapsed_range = self
             .moves
             .iter()
-            .rev()
-            .take_while(|a| a.commute(mv))
-            .copied()
-            .collect::<Vec<_>>();
-
-        let indices = tail
-            .iter()
             .enumerate()
-            .filter_map(|(i, &a)| if a.abs() == mv.abs() { Some(i) } else { None })
-            .collect::<Vec<_>>();
+            .rev()
+            .take_while(|(_, a)| a.commute(mv))
+            .skip_while(|(_, a)| a.abs() != mv.abs())
+            .take_while(|(_, a)| a.abs() == mv.abs())
+            .map(|(i, _)| i)
+            .first_and_last()
+            .map_or(self.moves.len()..self.moves.len(), |(j, i)| i..j + 1);
 
-        let is_canonical =
-            indices.is_empty() || (indices.first() == Some(&0) && tail.first() == Some(&mv));
-        let mut is_changed = false;
+        let broken_keys_count = self
+            .keys
+            .iter()
+            .rev()
+            .take_while(|(_, c)| c.end > collapsed_range.start)
+            .count();
 
-        if is_canonical {
-            self.moves.push(mv);
+        let mut subseq = self.moves.drain(collapsed_range).collect::<Vec<_>>();
+        if subseq.is_empty() || subseq.last().unwrap() == &mv {
+            subseq.push(mv);
         } else {
-            let len = self.moves.len();
-            let start = len - 1 - *indices.last().unwrap();
-            let end = len - *indices.first().unwrap();
-            let mut subseq = self.moves.drain(start..end).collect::<Vec<_>>();
-            if subseq[0] == mv {
-                subseq.push(mv);
-            } else {
-                subseq.pop();
-            }
-            self.moves.append(&mut subseq);
+            subseq.pop();
+        }
+        self.moves.extend(subseq);
 
-            let broken = self
-                .keys
-                .iter()
-                .rev()
-                .take_while(|(_, c)| c.end > start)
-                .count();
-            if broken > 0 {
-                self.keys.drain(self.keys.len() - broken..);
-                is_changed = true;
-            }
+        let mut key_changed = false;
+
+        if broken_keys_count > 0 {
+            self.keys.drain(self.keys.len() - broken_keys_count..);
+            key_changed = true;
         }
 
         let chunk_end = self.keys.last().map_or(0, |k| k.1.end);
-        let mut new_keys = CuboardKey::parse(&self.moves, chunk_end);
+        let new_keys = CuboardKey::parse(&self.moves, chunk_end);
         if !new_keys.is_empty() {
-            is_changed = true;
-            self.keys.append(&mut new_keys);
+            self.keys.extend(new_keys);
+            key_changed = true;
         }
 
-        is_changed
+        key_changed
     }
 }
