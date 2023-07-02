@@ -304,7 +304,7 @@ mod codec {
         fn decode_cube_moves(biter: &mut Biter) -> Self {
             let count = biter.extract(8) as u8;
             let moves: [Option<CubeMove>; 7] = (0..7)
-                .map(|_| CubeMove::try_from(biter.extract(5) as u8).ok())
+                .map(|_| CubeMove::from_repr(biter.extract(5) as u8))
                 .collect::<Vec<_>>()
                 .try_into()
                 .unwrap();
