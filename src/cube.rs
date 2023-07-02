@@ -16,6 +16,12 @@ pub enum CornerPosition {
     URF, UFL, ULB, UBR, DFR, DLF, DBL, DRB,
 }
 
+impl CornerPosition {
+    pub fn repr(self) -> u8 {
+        self as u8
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Corner(pub CornerPosition, pub PieceOrientation<3>);
 
@@ -23,7 +29,7 @@ impl Display for Corner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name = self.0.to_string();
         let mut name = name.chars().collect::<Box<_>>();
-        name.rotate_left(u8::from(self.1) as usize);
+        name.rotate_left(self.1.repr() as usize);
         let name = name.iter().collect::<String>();
         write!(f, "{}", name)
     }
@@ -46,6 +52,12 @@ pub enum EdgePosition {
     UR, UF, UL, UB, DR, DF, DL, DB, FR, FL, BL, BR,
 }
 
+impl EdgePosition {
+    pub fn repr(self) -> u8 {
+        self as u8
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Edge(pub EdgePosition, pub PieceOrientation<2>);
 
@@ -53,7 +65,7 @@ impl Display for Edge {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name = self.0.to_string();
         let mut name = name.chars().collect::<Box<_>>();
-        name.rotate_left(u8::from(self.1) as usize);
+        name.rotate_left(self.1.repr() as usize);
         let name = name.iter().collect::<String>();
         write!(f, "{}", name)
     }
@@ -73,18 +85,16 @@ impl TryFrom<(u8, u8)> for Edge {
 pub struct PieceOrientation<const N: u8>(u8);
 
 impl<const N: u8> PieceOrientation<N> {
-    fn from_repr(repr: u8) -> Option<Self> {
+    pub fn from_repr(repr: u8) -> Option<Self> {
         if (0..N).contains(&repr) {
             Some(PieceOrientation(repr))
         } else {
             None
         }
     }
-}
 
-impl<const N: u8> From<PieceOrientation<N>> for u8 {
-    fn from(val: PieceOrientation<N>) -> Self {
-        val.0
+    pub fn repr(self) -> u8 {
+        self.0
     }
 }
 
@@ -92,19 +102,19 @@ impl<const N: u8> Add<PieceOrientation<N>> for PieceOrientation<N> {
     type Output = PieceOrientation<N>;
 
     fn add(self, rhs: PieceOrientation<N>) -> Self::Output {
-        Self::from_repr((u8::from(self) + u8::from(rhs)) % N).unwrap()
+        Self::from_repr((self.repr() + rhs.repr()) % N).unwrap()
     }
 }
 
 impl<const N: u8> Sum for PieceOrientation<N> {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        Self::from_repr(iter.map(u8::from).sum::<u8>() % N).unwrap()
+        Self::from_repr(iter.map(|c| c.repr()).sum::<u8>() % N).unwrap()
     }
 }
 
 impl<'a, const N: u8> Sum<&'a PieceOrientation<N>> for PieceOrientation<N> {
     fn sum<I: Iterator<Item = &'a PieceOrientation<N>>>(iter: I) -> Self {
-        Self::from_repr(iter.map(|c| u8::from(*c)).sum::<u8>() % N).unwrap()
+        Self::from_repr(iter.map(|c| c.repr()).sum::<u8>() % N).unwrap()
     }
 }
 
@@ -112,7 +122,7 @@ impl<const N: u8> Neg for PieceOrientation<N> {
     type Output = PieceOrientation<N>;
 
     fn neg(self) -> Self::Output {
-        Self::from_repr((N - u8::from(self)) % N).unwrap()
+        Self::from_repr((N - self.repr()) % N).unwrap()
     }
 }
 
@@ -151,6 +161,10 @@ impl CubeOrientation {
 }
 
 impl CubeOrientation {
+    pub fn repr(self) -> u8 {
+        self as u8
+    }
+
     fn chars(self) -> [char; 6] {
         self.to_string()
             .chars()
@@ -173,7 +187,7 @@ impl CubeOrientation {
     }
 
     pub fn is_mirror(self) -> bool {
-        self as u8 >= 24
+        self.repr() >= 24
     }
 }
 
@@ -277,12 +291,16 @@ impl Display for CubeMove {
 }
 
 impl CubeMove {
+    pub fn repr(self) -> u8 {
+        self as u8
+    }
+    
     pub fn is_clockwise(self) -> bool {
-        self as u8 % 2 == 0
+        self.repr() % 2 == 0
     }
 
     pub fn rev(self) -> Self {
-        let repr = self as u8;
+        let repr = self.repr();
         let (ind, dir) = (repr / 2, repr % 2);
         let dir = (dir + 1) % 2;
         let repr = ind * 2 + dir;
@@ -290,15 +308,15 @@ impl CubeMove {
     }
 
     pub fn abs(self) -> Self {
-        Self::from_repr(self as u8 / 2 * 2).unwrap()
+        Self::from_repr(self.repr() / 2 * 2).unwrap()
     }
 
     pub fn commute(self, other: Self) -> bool {
-        self as u8 / 2 % 3 == other as u8 / 2 % 3
+        self.repr() / 2 % 3 == other.repr() / 2 % 3
     }
 
     pub fn transform(self, trans: CubeOrientation) -> Self {
-        let repr = self as u8;
+        let repr = self.repr();
         let (ind, dir) = (repr / 2, repr % 2);
         let trans_ind = trans
             .perm()

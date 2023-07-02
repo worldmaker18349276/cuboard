@@ -167,94 +167,6 @@ mod codec {
     };
     use crate::cube::*;
 
-    #[derive(PartialEq, Eq, PartialOrd, Ord)]
-    pub struct CubeStateRaw {
-        pub corners_position: [u8; 8],
-        pub corners_orientation: [u8; 8],
-        pub edges_position: [u8; 12],
-        pub edges_orientation: [u8; 12],
-    }
-
-    impl Default for CubeStateRaw {
-        fn default() -> Self {
-            CubeStateRaw {
-                corners_position: [0, 1, 2, 3, 4, 5, 6, 7],
-                corners_orientation: [0; 8],
-                edges_position: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-                edges_orientation: [0; 12],
-            }
-        }
-    }
-
-    impl TryFrom<CubeStateRaw> for CubeState {
-        type Error = ();
-
-        fn try_from(value: CubeStateRaw) -> Result<Self, Self::Error> {
-            let corners: [Corner; 8] = value
-                .corners_position
-                .into_iter()
-                .zip(value.corners_orientation)
-                .map(|v| v.try_into())
-                .collect::<Result<Vec<Corner>, ()>>()?
-                .try_into()
-                .unwrap();
-
-            let edges: [Edge; 12] = value
-                .edges_position
-                .into_iter()
-                .zip(value.edges_orientation)
-                .map(|v| v.try_into())
-                .collect::<Result<Vec<Edge>, ()>>()?
-                .try_into()
-                .unwrap();
-
-            Ok(CubeState { corners, edges })
-        }
-    }
-
-    impl From<CubeState> for CubeStateRaw {
-        fn from(value: CubeState) -> Self {
-            let corners_position: [u8; 8] = value
-                .corners
-                .into_iter()
-                .map(|c| c.0 as u8)
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap();
-
-            let corners_orientation: [u8; 8] = value
-                .corners
-                .into_iter()
-                .map(|c| u8::from(c.1))
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap();
-
-            let edges_position: [u8; 12] = value
-                .edges
-                .into_iter()
-                .map(|c| c.0 as u8)
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap();
-
-            let edges_orientation: [u8; 12] = value
-                .edges
-                .into_iter()
-                .map(|c| u8::from(c.1))
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap();
-
-            CubeStateRaw {
-                corners_position,
-                corners_orientation,
-                edges_position,
-                edges_orientation,
-            }
-        }
-    }
-
     #[derive(Debug, Error)]
     pub enum MessageParseError {
         #[error("bad message length: {0}")]
@@ -271,6 +183,12 @@ mod codec {
         CubeState    = 0b0100,
         BatteryState = 0b1001,
         Disconnect   = 0b1101,
+    }
+
+    impl ResponseMessageType {
+        pub fn repr(self) -> u8 {
+            self as u8
+        }
     }
 
     impl TryFrom<u8> for ResponseMessageType {
@@ -417,33 +335,30 @@ mod codec {
         fn decode_cube_state(biter: &mut Biter) -> Self {
             let count = biter.extract(8) as u8;
 
-            let mut state_raw = CubeStateRaw::default();
+            let mut corners_position = [0, 1, 2, 3, 4, 5, 6, 7];
+            let mut corners_orientation = [0; 8];
+            let mut edges_position = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+            let mut edges_orientation = [0; 12];
 
-            for i in 0..7 {
-                state_raw.corners_position[i] = biter.extract(3) as u8;
+            for pos in corners_position.iter_mut().take(7) {
+                *pos = biter.extract(3) as u8;
             }
-            state_raw.corners_position[7] = (0..8)
-                .find(|a| !state_raw.corners_position[..7].contains(a))
-                .unwrap();
+            corners_position[7] = (0..8).find(|a| !corners_position[..7].contains(a)).unwrap();
 
-            for i in 0..7 {
-                state_raw.corners_orientation[i] = biter.extract(2) as u8;
+            for ori in corners_orientation.iter_mut().take(7) {
+                *ori = biter.extract(2) as u8;
             }
-            state_raw.corners_orientation[7] =
-                (3 - state_raw.corners_orientation[..7].iter().sum::<u8>() % 3) % 3;
+            corners_orientation[7] = (3 - corners_orientation[..7].iter().sum::<u8>() % 3) % 3;
 
-            for i in 0..11 {
-                state_raw.edges_position[i] = biter.extract(4) as u8;
+            for pos in edges_position.iter_mut().take(11) {
+                *pos = biter.extract(4) as u8;
             }
-            state_raw.edges_position[11] = (0..12)
-                .find(|a| !state_raw.edges_position[..11].contains(a))
-                .unwrap();
+            edges_position[11] = (0..12).find(|a| !edges_position[..11].contains(a)).unwrap();
 
-            for i in 0..11 {
-                state_raw.edges_orientation[i] = biter.extract(1) as u8;
+            for ori in edges_position.iter_mut().take(11) {
+                *ori = biter.extract(1) as u8;
             }
-            state_raw.edges_orientation[11] =
-                (2 - state_raw.edges_orientation[..11].iter().sum::<u8>() % 2) % 2;
+            edges_orientation[11] = (2 - edges_orientation[..11].iter().sum::<u8>() % 2) % 2;
 
             let _unknown = biter.extract(10);
 
@@ -452,7 +367,26 @@ mod codec {
                 eprintln!("bad remains data, possibly broken: {:02X?}", remains);
             }
 
-            Self::State { count, state: state_raw.try_into().unwrap() }
+            let corners: [Corner; 8] = corners_position
+                .into_iter()
+                .zip(corners_orientation)
+                .map(|v| v.try_into().unwrap())
+                .collect::<Vec<Corner>>()
+                .try_into()
+                .unwrap();
+
+            let edges: [Edge; 12] = edges_position
+                .into_iter()
+                .zip(edges_orientation)
+                .map(|v| v.try_into().unwrap())
+                .collect::<Vec<Edge>>()
+                .try_into()
+                .unwrap();
+
+            Self::State {
+                count,
+                state: CubeState { corners, edges },
+            }
         }
 
         fn decode_battery_state(biter: &mut Biter) -> Self {
@@ -607,6 +541,12 @@ mod codec {
         ResetCubeState      = 0b_0000_1010,
     }
 
+    impl RequestMessageType {
+        fn repr(self) -> u8 {
+            self as u8
+        }
+    }
+
     #[allow(clippy::enum_variant_names)]
     pub enum RequestMessage {
         RequestCubeState,
@@ -621,25 +561,24 @@ mod codec {
 
             match self {
                 Self::RequestCubeState => {
-                    biter.assign(8, RequestMessageType::RequestCubeState as u8 as u32);
+                    biter.assign(8, RequestMessageType::RequestCubeState.repr() as u32);
                 }
                 Self::RequestBatteryState => {
-                    biter.assign(8, RequestMessageType::RequestBatteryState as u8 as u32);
+                    biter.assign(8, RequestMessageType::RequestBatteryState.repr() as u32);
                 }
                 Self::ResetCubeState(state) => {
-                    let state_raw: CubeStateRaw = state.clone().into();
-                    biter.assign(8, RequestMessageType::ResetCubeState as u8 as u32);
-                    for val in state_raw.corners_position {
-                        biter.assign(3, val as u32);
+                    biter.assign(8, RequestMessageType::ResetCubeState.repr() as u32);
+                    for corner in state.corners {
+                        biter.assign(3, corner.0.repr() as u32);
                     }
-                    for val in state_raw.corners_orientation {
-                        biter.assign(2, val as u32);
+                    for corner in state.corners {
+                        biter.assign(2, corner.1.repr() as u32);
                     }
-                    for val in state_raw.edges_position {
-                        biter.assign(4, val as u32);
+                    for edge in state.edges {
+                        biter.assign(4, edge.0.repr() as u32);
                     }
-                    for val in state_raw.edges_orientation {
-                        biter.assign(1, val as u32);
+                    for edge in state.edges {
+                        biter.assign(1, edge.1.repr() as u32);
                     }
                 }
             }
