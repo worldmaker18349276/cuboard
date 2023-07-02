@@ -62,14 +62,14 @@ impl CuboardKey {
     }
 }
 
-pub struct Cuboard {
+pub struct CuboardBuffer {
     moves: Vec<CubeMove>,
     keys: Vec<(CuboardKey, Range<usize>)>,
 }
 
-impl Cuboard {
+impl CuboardBuffer {
     pub fn new() -> Self {
-        Cuboard {
+        CuboardBuffer {
             moves: Vec::new(),
             keys: Vec::new(),
         }

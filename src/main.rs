@@ -9,7 +9,7 @@ use std::ops::Range;
 
 use bluetooth::gancubev2::{GanCubeV2Builder, ResponseMessage};
 
-use crate::cuboard::Cuboard;
+use crate::cuboard::CuboardBuffer;
 
 mod bluetooth;
 mod cube;
@@ -127,7 +127,7 @@ fn make_cheatsheet(keymap: CuboardKeymap) -> String {
 }
 
 struct CuboardInput {
-    cuboard: Cuboard,
+    buffer: CuboardBuffer,
     keymap: CuboardKeymap,
     count: Option<u8>,
 }
@@ -168,14 +168,14 @@ const DEFAULT_KEYMAP: CuboardKeymap = [
 impl CuboardInput {
     fn new(keymap: CuboardKeymap) -> Self {
         CuboardInput {
-            cuboard: Cuboard::new(),
+            buffer: CuboardBuffer::new(),
             keymap,
             count: None,
         }
     }
 
     fn text(&self) -> String {
-        self.cuboard
+        self.buffer
             .keys()
             .iter()
             .map(|k| self.keymap[k.0.is_shifted as usize][k.0.main as u8 as usize][k.0.num])
@@ -183,13 +183,13 @@ impl CuboardInput {
     }
 
     fn complete_part(&self) -> String {
-        let moves = self.cuboard.moves();
-        let complete = &moves[..moves.len() - self.cuboard.remains().len()];
+        let moves = self.buffer.moves();
+        let complete = &moves[..moves.len() - self.buffer.remains().len()];
         format_moves(complete)
     }
 
     fn remain_part(&self) -> String {
-        format_moves(self.cuboard.remains())
+        format_moves(self.buffer.remains())
     }
 }
 
@@ -233,7 +233,7 @@ impl CuboardInputPrinter {
         let diff = count.wrapping_sub(prev_count).clamp(0, 7) as usize;
         for &mv in moves[..diff].iter().rev() {
             if let Some(mv) = mv {
-                self.input.cuboard.input(mv);
+                self.input.buffer.input(mv);
             }
         }
 
@@ -241,7 +241,7 @@ impl CuboardInputPrinter {
         print!("\x1b[A\r\x1b[2K{}\x1b[K\x1b[0;7m \x1b[m\n", text);
         if text.contains('\n') {
             assert!(!text[..text.len() - 1].contains('\n'));
-            self.input.cuboard.finish();
+            self.input.buffer.finish();
         }
 
         let complete_part = self.input.complete_part();
@@ -326,7 +326,7 @@ impl<T: Iterator<Item = String>, const N: usize> CuboardInputTrainer<T, N> {
         let diff = count.wrapping_sub(prev_count).clamp(0, 7) as usize;
         for &mv in moves[..diff].iter().rev() {
             if let Some(mv) = mv {
-                self.input.cuboard.input(mv);
+                self.input.buffer.input(mv);
             }
         }
 
@@ -363,7 +363,7 @@ impl<T: Iterator<Item = String>, const N: usize> CuboardInputTrainer<T, N> {
             assert!(!text[..text.len() - 1].contains('\n'));
             let new_line = self.text.next().unwrap_or_default();
             print!("\r\x1b[m\x1b[2K\r\x1b[2m{}\x1b[m\n", new_line);
-            self.input.cuboard.finish();
+            self.input.buffer.finish();
             self.lines.rotate_left(1);
             self.lines[N - 1] = new_line;
         }
