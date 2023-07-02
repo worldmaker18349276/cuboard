@@ -23,7 +23,7 @@ impl Display for Corner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name = self.0.to_string();
         let mut name = name.chars().collect::<Box<_>>();
-        name.rotate_left(self.1.value() as usize);
+        name.rotate_left(u8::from(self.1) as usize);
         let name = name.iter().collect::<String>();
         write!(f, "{}", name)
     }
@@ -34,7 +34,7 @@ impl TryFrom<(u8, u8)> for Corner {
 
     fn try_from(value: (u8, u8)) -> Result<Self, Self::Error> {
         let pos = CornerPosition::from_repr(value.0).ok_or(())?;
-        let ori = PieceOrientation::new(value.1).ok_or(())?;
+        let ori = PieceOrientation::from_repr(value.1).ok_or(())?;
         Ok(Corner(pos, ori))
     }
 }
@@ -53,7 +53,7 @@ impl Display for Edge {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name = self.0.to_string();
         let mut name = name.chars().collect::<Box<_>>();
-        name.rotate_left(self.1.value() as usize);
+        name.rotate_left(u8::from(self.1) as usize);
         let name = name.iter().collect::<String>();
         write!(f, "{}", name)
     }
@@ -64,27 +64,27 @@ impl TryFrom<(u8, u8)> for Edge {
 
     fn try_from(value: (u8, u8)) -> Result<Self, Self::Error> {
         let pos = EdgePosition::from_repr(value.0).ok_or(())?;
-        let ori = PieceOrientation::new(value.1).ok_or(())?;
+        let ori = PieceOrientation::from_repr(value.1).ok_or(())?;
         Ok(Edge(pos, ori))
     }
 }
-
-// algebra
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Default)]
 pub struct PieceOrientation<const N: u8>(u8);
 
 impl<const N: u8> PieceOrientation<N> {
-    fn new(repr: u8) -> Option<Self> {
+    fn from_repr(repr: u8) -> Option<Self> {
         if (0..N).contains(&repr) {
             Some(PieceOrientation(repr))
         } else {
             None
         }
     }
+}
 
-    fn value(self) -> u8 {
-        self.0
+impl<const N: u8> From<PieceOrientation<N>> for u8 {
+    fn from(val: PieceOrientation<N>) -> Self {
+        val.0
     }
 }
 
@@ -92,19 +92,19 @@ impl<const N: u8> Add<PieceOrientation<N>> for PieceOrientation<N> {
     type Output = PieceOrientation<N>;
 
     fn add(self, rhs: PieceOrientation<N>) -> Self::Output {
-        Self::new((self.value() + rhs.value()) % N).unwrap()
+        Self::from_repr((u8::from(self) + u8::from(rhs)) % N).unwrap()
     }
 }
 
 impl<const N: u8> Sum for PieceOrientation<N> {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        Self::new(iter.map(|c| c.value()).sum::<u8>() % N).unwrap()
+        Self::from_repr(iter.map(u8::from).sum::<u8>() % N).unwrap()
     }
 }
 
 impl<'a, const N: u8> Sum<&'a PieceOrientation<N>> for PieceOrientation<N> {
     fn sum<I: Iterator<Item = &'a PieceOrientation<N>>>(iter: I) -> Self {
-        Self::new(iter.map(|c| c.value()).sum::<u8>() % N).unwrap()
+        Self::from_repr(iter.map(|c| u8::from(*c)).sum::<u8>() % N).unwrap()
     }
 }
 
@@ -112,7 +112,7 @@ impl<const N: u8> Neg for PieceOrientation<N> {
     type Output = PieceOrientation<N>;
 
     fn neg(self) -> Self::Output {
-        Self::new((N - self.value()) % N).unwrap()
+        Self::from_repr((N - u8::from(self)) % N).unwrap()
     }
 }
 
@@ -292,7 +292,7 @@ impl From<CubeState> for CubeStateRaw {
         let corners_orientation: [u8; 8] = value
             .corners
             .into_iter()
-            .map(|c| c.1.value())
+            .map(|c| u8::from(c.1))
             .collect::<Vec<_>>()
             .try_into()
             .unwrap();
@@ -308,7 +308,7 @@ impl From<CubeState> for CubeStateRaw {
         let edges_orientation: [u8; 12] = value
             .edges
             .into_iter()
-            .map(|c| c.1.value())
+            .map(|c| u8::from(c.1))
             .collect::<Vec<_>>()
             .try_into()
             .unwrap();
