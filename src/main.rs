@@ -1,9 +1,10 @@
 use btleplug::api::{Central, Manager, ScanFilter};
 use btleplug::platform;
 use cube::format_moves;
+use tokio::time::{sleep, Duration};
 use std::error::Error;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write, stdout};
 use std::ops::Range;
 
 use bluetooth::gancubev2::{GanCubeV2Builder, ResponseMessage};
@@ -26,19 +27,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // start scanning for devices
     adapter.start_scan(ScanFilter::default()).await?;
-    println!("press enter if your GANCube is ready to connect.");
+    print!("scan devices");
 
-    let mut buf = String::new();
     let builder = 'a: loop {
-        std::io::stdin().read_line(&mut buf)?;
+        print!(".");
+        stdout().flush().unwrap();
 
-        println!("scan devices...");
         let found = GanCubeV2Builder::find_gancube_device(&adapter).await?;
         if let Some(builder) = found.into_iter().next() {
             break 'a builder;
         }
-        println!("no GANCube is found, please try again.");
+
+        sleep(Duration::from_secs(1)).await;
     };
+    println!();
 
     adapter.stop_scan().await?;
 
@@ -201,8 +203,6 @@ impl CuboardInputPrinter {
     }
 
     fn handle_message(&mut self, msg: ResponseMessage) {
-        use std::io::{stdout, Write};
-
         if self.input.count.is_none() {
             if let ResponseMessage::State { count, state: _ } = msg {
                 self.input.count = Some(count);
@@ -288,8 +288,6 @@ impl<T: Iterator<Item = String>, const N: usize> CuboardInputTrainer<T, N> {
     }
 
     fn handle_message(&mut self, msg: ResponseMessage) {
-        use std::io::{stdout, Write};
-
         if self.input.count.is_none() {
             if let ResponseMessage::State { count, state: _ } = msg {
                 self.input.count = Some(count);
