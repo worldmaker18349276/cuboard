@@ -157,8 +157,10 @@ impl<P: Peripheral> GanCubeV2<P> {
 }
 
 mod codec {
-    use std::io::prelude::*;
+    use std::{io::prelude::*, time::Duration};
+    use strum_macros::FromRepr;
     use thiserror::Error;
+    use try_block::try_block;
 
     use super::{
         cipher::GanCubeV2Cipher,
@@ -174,8 +176,9 @@ mod codec {
         UnrecognizedMessage([u8; 20]),
     }
 
-    #[rustfmt::skip]
+    // #[rustfmt::skip]
     #[repr(u8)]
+    #[derive(FromRepr)]
     enum ResponseMessageType {
         Gyroscope    = 0b0001,
         CubeMoves    = 0b0010,
@@ -187,21 +190,6 @@ mod codec {
     impl ResponseMessageType {
         pub fn repr(self) -> u8 {
             self as u8
-        }
-    }
-
-    impl TryFrom<u8> for ResponseMessageType {
-        type Error = ();
-
-        fn try_from(value: u8) -> Result<Self, Self::Error> {
-            match value {
-                0b0001 => Ok(ResponseMessageType::Gyroscope),
-                0b0010 => Ok(ResponseMessageType::CubeMoves),
-                0b0100 => Ok(ResponseMessageType::CubeState),
-                0b1001 => Ok(ResponseMessageType::BatteryState),
-                0b1101 => Ok(ResponseMessageType::Disconnect),
-                _ => Err(()),
-            }
         }
     }
 
@@ -219,11 +207,11 @@ mod codec {
         Moves {
             count: u8,
             moves: [Option<CubeMove>; 7],
-            times: [u32; 7],
+            times: [Duration; 7],
         },
         State {
             count: u8,
-            state: CubeState,
+            state: Option<CubeState>,
         },
         Battery {
             charging: bool,
@@ -244,7 +232,7 @@ mod codec {
 
             let mut biter = Biter::new(&data);
 
-            let Ok(message_type) = ResponseMessageType::try_from(biter.extract(4) as u8) else {
+            let Some(message_type) = ResponseMessageType::from_repr(biter.extract(4) as u8) else {
                 return Err(MessageParseError::UnrecognizedMessage(data));
             };
 
@@ -308,16 +296,16 @@ mod codec {
 
         fn decode_cube_moves(biter: &mut Biter) -> Self {
             let count = biter.extract(8) as u8;
-            let moves: [Option<CubeMove>; 7] = (0..7)
-                .map(|_| CubeMove::from_repr(biter.extract(5) as u8))
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap();
-            let times: [u32; 7] = (0..7)
-                .map(|_| biter.extract(16))
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap();
+
+            let mut moves = <[Option<CubeMove>; 7]>::default();
+            for mv in moves.iter_mut() {
+                *mv = CubeMove::from_repr(biter.extract(5) as u8);
+            }
+
+            let mut times = <[Duration; 7]>::default();
+            for t in times.iter_mut() {
+                *t = Duration::from_millis(biter.extract(16) as u64);
+            }
 
             let remains = biter.extract(1);
             if remains != 0 {
@@ -366,25 +354,27 @@ mod codec {
                 eprintln!("bad remains data, possibly broken: {:02X?}", remains);
             }
 
-            let corners: [Corner; 8] = corners_position
-                .into_iter()
-                .zip(corners_orientation)
-                .map(|v| v.try_into().unwrap())
-                .collect::<Vec<Corner>>()
-                .try_into()
-                .unwrap();
+            let state = try_block! {
+                let corners: [Corner; 8] = corners_position
+                    .into_iter()
+                    .zip(corners_orientation)
+                    .map(|v| v.try_into().ok())
+                    .collect::<Option<Vec<_>>>()?
+                    .try_into().unwrap();
 
-            let edges: [Edge; 12] = edges_position
-                .into_iter()
-                .zip(edges_orientation)
-                .map(|v| v.try_into().unwrap())
-                .collect::<Vec<Edge>>()
-                .try_into()
-                .unwrap();
+                let edges: [Edge; 12] = edges_position
+                    .into_iter()
+                    .zip(edges_orientation)
+                    .map(|v| v.try_into().ok())
+                    .collect::<Option<Vec<_>>>()?
+                    .try_into().unwrap();
+
+                Some(CubeState::new(corners, edges))
+            };
 
             Self::State {
                 count,
-                state: CubeState::new(corners, edges),
+                state,
             }
         }
 
@@ -480,19 +470,24 @@ mod codec {
             let _ = std::io::stdout().flush();
         }
 
-        fn show_moves(count: u8, moves: [Option<CubeMove>; 7], times: [u32; 7]) {
+        fn show_moves(count: u8, moves: [Option<CubeMove>; 7], times: [Duration; 7]) {
             print!("{}", CREL);
             print!("count={:3}, ", count);
-            print!("({:.3} s) ", times[0] as f32 / 1000.0);
+            print!("({:.3} s) ", times[0].as_secs_f32());
             for mv in moves {
                 print!("{:2} ", mv.map_or("??".to_owned(), |m| m.to_string()));
             }
             println!();
         }
 
-        fn show_cube_state(count: u8, state: CubeState) {
+        fn show_cube_state(count: u8, state: Option<CubeState>) {
             print!("{}", CREL);
             print!("count={:3}, ", count);
+
+            let Some(state) = state else {
+                println!("corners=[???], edges=[??]");
+                return;  
+            };
 
             print!(
                 "corners=[{}], ",
@@ -541,7 +536,7 @@ mod codec {
     }
 
     impl RequestMessageType {
-        fn repr(self) -> u8 {
+        pub fn repr(self) -> u8 {
             self as u8
         }
     }
@@ -604,6 +599,16 @@ mod cipher {
         aes: Aes128,
     }
 
+    const KEY: [u8; 16] = [
+        0x01, 0x02, 0x42, 0x28, 0x31, 0x91, 0x16, 0x07,
+        0x20, 0x05, 0x18, 0x54, 0x42, 0x11, 0x12, 0x53,
+    ];
+
+    const IV: [u8; 16] = [
+        0x11, 0x03, 0x32, 0x28, 0x21, 0x01, 0x76, 0x27,
+        0x20, 0x95, 0x78, 0x14, 0x32, 0x12, 0x02, 0x43,
+    ];
+
     impl GanCubeV2Cipher {
         pub(super) fn make_cipher(
             device_props: &PeripheralProperties,
@@ -616,14 +621,8 @@ mod cipher {
             };
 
             let device_key: [u8; 6] = device_id[3..9].try_into().unwrap();
-            let mut key = [
-                0x01, 0x02, 0x42, 0x28, 0x31, 0x91, 0x16, 0x07, 0x20, 0x05, 0x18, 0x54, 0x42, 0x11,
-                0x12, 0x53,
-            ];
-            let mut iv = [
-                0x11, 0x03, 0x32, 0x28, 0x21, 0x01, 0x76, 0x27, 0x20, 0x95, 0x78, 0x14, 0x32, 0x12,
-                0x02, 0x43,
-            ];
+            let mut key = KEY;
+            let mut iv = IV;
 
             fn add_device_key(secret: &mut [u8; 16], device_key: &[u8; 6]) {
                 secret

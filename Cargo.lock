@@ -239,6 +239,7 @@ dependencies = [
  "strum_macros",
  "thiserror",
  "tokio",
+ "try-block",
  "uuid",
 ]
 
@@ -836,6 +837,12 @@ dependencies = [
  "pin-project-lite",
  "tokio",
 ]
+
+[[package]]
+name = "try-block"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f568ed684112efae02e996f1320d284bacea7a106e3383a22b3ea198d8f2b11c"
 
 [[package]]
 name = "typenum"
