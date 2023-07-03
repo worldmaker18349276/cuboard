@@ -152,7 +152,6 @@ impl<P: Peripheral> GanCubeV2<P> {
         self.device
             .write(&self.request, &message, WriteType::WithResponse)
             .await?;
-
         Ok(())
     }
 }
@@ -669,7 +668,9 @@ mod cipher {
 }
 
 mod util {
-    // Bit iterator
+    const FIRST_BIT: u8 = 1 << 7;
+
+    // big-endian bit iterator
     pub struct Biter<'a> {
         data: &'a [u8],
         index: usize,
@@ -697,7 +698,7 @@ mod util {
             let mut result = 0;
             for bit in (self.index..).take(count) {
                 result <<= 1;
-                if self.data[bit / 8] & (1 << (7 - (bit % 8))) != 0 {
+                if self.data[bit / 8] & (FIRST_BIT >> (bit % 8)) != 0 {
                     result |= 1;
                 }
             }
@@ -723,7 +724,7 @@ mod util {
             let mut result = 0;
             for bit in (self.index..).take(count) {
                 result <<= 1;
-                if self.data[bit / 8] & (1 << (7 - (bit % 8))) != 0 {
+                if self.data[bit / 8] & (FIRST_BIT >> (bit % 8)) != 0 {
                     result |= 1;
                 }
             }
@@ -733,7 +734,9 @@ mod util {
         pub fn assign(&mut self, count: usize, value: u32) {
             for (bit, i) in (self.index..).take(count).zip((0..count).rev()) {
                 if value & (1 << i) != 0 {
-                    self.data[bit / 8] |= 1 << (7 - (bit % 8));
+                    self.data[bit / 8] |= FIRST_BIT >> (bit % 8);
+                } else {
+                    self.data[bit / 8] &= !(FIRST_BIT >> (bit % 8));
                 }
             }
             self.index += count;
