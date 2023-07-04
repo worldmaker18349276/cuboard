@@ -7,10 +7,102 @@ use uuid::{uuid, Uuid};
 
 use crate::cube::*;
 
-pub struct GanCubeV2<P: Peripheral> {
-    pub device: P,
+struct GanCubeV2Services {
     response: Characteristic,
     request: Characteristic,
+    unknown1: Option<Characteristic>, // version?
+    unknown2: Option<Characteristic>, // empty?
+    unknown3: Option<Characteristic>, // ???
+    unknown4: Option<Characteristic>, // control?
+    others: Vec<Characteristic>,
+}
+
+#[rustfmt::skip]
+impl GanCubeV2Services {
+    const REQUEST_UUID  : Uuid = uuid!("28be4a4a-cd67-11e9-a32f-2a2ae2dbcce4");
+    const RESPONSE_UUID : Uuid = uuid!("28be4cb6-cd67-11e9-a32f-2a2ae2dbcce4");
+    const UNKNOWN1_UUID : Uuid = uuid!("00002a05-0000-1000-8000-00805f9b34fb");
+    const UNKNOWN2_UUID : Uuid = uuid!("ec4cff6d-81fc-4e5b-91e0-8103885c9ae3");
+    const UNKNOWN3_UUID : Uuid = uuid!("f95a4b66-a721-11e9-a2a3-022ae2dbcce4");
+    const UNKNOWN4_UUID : Uuid = uuid!("f95a5034-a721-11e9-a2a3-022ae2dbcce4");
+}
+
+impl GanCubeV2Services {
+    async fn discover_services(device: &impl Peripheral) -> Result<Self, Error> {
+        #[derive(Default)]
+        struct GanCubeV2ServicesBuilder {
+            response: Option<Characteristic>,
+            request: Option<Characteristic>,
+            unknown1: Option<Characteristic>,
+            unknown2: Option<Characteristic>,
+            unknown3: Option<Characteristic>,
+            unknown4: Option<Characteristic>,
+            others: Vec<Characteristic>,
+        }
+
+        // println!("discover services and characteristics...");
+        device.discover_services().await?;
+
+        let chars = device.characteristics();
+
+        let mut builder = GanCubeV2ServicesBuilder::default();
+
+        // println!("-------------------");
+        for cmd_char in chars {
+            if cmd_char.uuid == Self::REQUEST_UUID {
+                // println!("request: {:#?}", cmd_char);
+                builder.request = Some(cmd_char);
+            } else if cmd_char.uuid == Self::RESPONSE_UUID {
+                // println!("response: {:#?}", cmd_char);
+                builder.response = Some(cmd_char);
+            } else if cmd_char.uuid == Self::UNKNOWN1_UUID {
+                // println!("unknown1: {:#?}", cmd_char);
+                // debug_assert!(cmd_char.properties.contains(btleplug::api::CharPropFlags::READ));
+                // let res = device.read(&cmd_char).await?;
+                // println!("response: {:02X?}", res);
+                builder.unknown1 = Some(cmd_char);
+            } else if cmd_char.uuid == Self::UNKNOWN2_UUID {
+                // println!("unknown2: {:#?}", cmd_char);
+                // debug_assert!(cmd_char.properties.contains(btleplug::api::CharPropFlags::READ));
+                // let res = device.read(&cmd_char).await?;
+                // println!("response: {:02X?}", res);
+                builder.unknown2 = Some(cmd_char);
+            } else if cmd_char.uuid == Self::UNKNOWN3_UUID {
+                // println!("unknown3: {:#?}", cmd_char);
+                // debug_assert!(cmd_char.properties.contains(btleplug::api::CharPropFlags::READ));
+                // let res = device.read(&cmd_char).await?;
+                // println!("response: {:02X?}", res);
+                builder.unknown3 = Some(cmd_char);
+            } else if cmd_char.uuid == Self::UNKNOWN4_UUID {
+                // println!("unknown4: {:#?}", cmd_char);
+                builder.unknown4 = Some(cmd_char);
+            } else {
+                // println!("???: {:#?}", cmd_char);
+                builder.others.push(cmd_char);
+            }
+
+            // println!("-------------------");
+        }
+
+        if builder.response.is_none() || builder.request.is_none() {
+            return Err(DeviceError::InvaidCharacteristics.into());
+        }
+
+        Ok(GanCubeV2Services {
+            response: builder.response.unwrap(),
+            request: builder.request.unwrap(),
+            unknown1: builder.unknown1,
+            unknown2: builder.unknown2,
+            unknown4: builder.unknown4,
+            unknown3: builder.unknown3,
+            others: builder.others,
+        })
+    }
+}
+
+pub struct GanCubeV2<P: Peripheral> {
+    pub device: P,
+    services: GanCubeV2Services,
     cipher: cipher::GanCubeV2Cipher,
 }
 
@@ -37,10 +129,6 @@ pub enum DeviceError {
     InvalidDeviceIdentifier,
 }
 
-const REQUEST_UUID: Uuid = uuid!("28be4a4a-cd67-11e9-a32f-2a2ae2dbcce4");
-
-const RESPONSE_UUID: Uuid = uuid!("28be4cb6-cd67-11e9-a32f-2a2ae2dbcce4");
-
 impl<P: Peripheral> GanCubeV2Builder<P> {
     pub async fn find_gancube_device<A>(adapter: &A) -> Result<Vec<Self>, Error>
     where
@@ -62,22 +150,11 @@ impl<P: Peripheral> GanCubeV2Builder<P> {
         if !self.device.is_connected().await? {
             self.device.connect().await?;
         }
-        self.device.discover_services().await?;
-        let chars = self.device.characteristics();
-
-        let Some(response) = chars.iter().find(|ch| ch.uuid == RESPONSE_UUID).cloned() else {
-            return Err(DeviceError::InvaidCharacteristics.into());
-        };
-
-        let Some(request) = chars.iter().find(|ch| ch.uuid == REQUEST_UUID).cloned() else {
-            return Err(DeviceError::InvaidCharacteristics.into());
-        };
-
+        let services = GanCubeV2Services::discover_services(&self.device).await?;
         let cipher = cipher::GanCubeV2Cipher::make_cipher(&self.properties)?;
         Ok(GanCubeV2 {
             device: self.device.clone(),
-            response,
-            request,
+            services,
             cipher,
         })
     }
@@ -100,7 +177,7 @@ impl<P: Peripheral> GanCubeV2<P> {
                     continue;
                 };
 
-                if notification.uuid != RESPONSE_UUID {
+                if notification.uuid != GanCubeV2Services::RESPONSE_UUID {
                     continue;
                 }
 
@@ -124,17 +201,17 @@ impl<P: Peripheral> GanCubeV2<P> {
     }
 
     pub async fn subscribe_response(&self) -> Result<(), btleplug::Error> {
-        self.device.subscribe(&self.response).await
+        self.device.subscribe(&self.services.response).await
     }
 
     pub async fn unsubscribe_response(&self) -> Result<(), btleplug::Error> {
-        self.device.unsubscribe(&self.response).await
+        self.device.unsubscribe(&self.services.response).await
     }
 
     pub async fn request_battery_state(&self) -> Result<(), Error> {
         let message = codec::RequestMessage::RequestBatteryState.encode(&self.cipher);
         self.device
-            .write(&self.request, &message, WriteType::WithResponse)
+            .write(&self.services.request, &message, WriteType::WithResponse)
             .await?;
         Ok(())
     }
@@ -142,7 +219,7 @@ impl<P: Peripheral> GanCubeV2<P> {
     pub async fn request_cube_state(&self) -> Result<(), Error> {
         let message = codec::RequestMessage::RequestCubeState.encode(&self.cipher);
         self.device
-            .write(&self.request, &message, WriteType::WithResponse)
+            .write(&self.services.request, &message, WriteType::WithResponse)
             .await?;
         Ok(())
     }
@@ -150,7 +227,7 @@ impl<P: Peripheral> GanCubeV2<P> {
     pub async fn reset_cube_state(&self, state: CubeState) -> Result<(), Error> {
         let message = codec::RequestMessage::ResetCubeState(state).encode(&self.cipher);
         self.device
-            .write(&self.request, &message, WriteType::WithResponse)
+            .write(&self.services.request, &message, WriteType::WithResponse)
             .await?;
         Ok(())
     }
