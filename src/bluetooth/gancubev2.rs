@@ -240,6 +240,15 @@ impl<P: Peripheral> GanCubeV2<P> {
         Ok(())
     }
 
+    async fn arbitrary_request(&self, mut message: [u8; 20], response: bool) -> Result<(), Error> {
+        self.cipher.encrypt(&mut message);
+        let write_type = if response { WriteType::WithResponse } else { WriteType::WithoutResponse };
+        self.device
+            .write(&self.services.request, &message, write_type)
+            .await?;
+        Ok(())
+    }
+
     async fn unknown1(&self) -> Result<Vec<u8>, Error> {
         let Some(ref chr) = self.services.unknown1 else {
             return Err(DeviceError::InvaidCharacteristics.into());
