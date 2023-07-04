@@ -40,48 +40,28 @@ impl GanCubeV2Services {
             others: Vec<Characteristic>,
         }
 
-        // println!("discover services and characteristics...");
         device.discover_services().await?;
 
         let chars = device.characteristics();
 
         let mut builder = GanCubeV2ServicesBuilder::default();
 
-        // println!("-------------------");
         for cmd_char in chars {
             if cmd_char.uuid == Self::REQUEST_UUID {
-                // println!("request: {:#?}", cmd_char);
                 builder.request = Some(cmd_char);
             } else if cmd_char.uuid == Self::RESPONSE_UUID {
-                // println!("response: {:#?}", cmd_char);
                 builder.response = Some(cmd_char);
             } else if cmd_char.uuid == Self::UNKNOWN1_UUID {
-                // println!("unknown1: {:#?}", cmd_char);
-                // debug_assert!(cmd_char.properties.contains(btleplug::api::CharPropFlags::READ));
-                // let res = device.read(&cmd_char).await?;
-                // println!("response: {:02X?}", res);
                 builder.unknown1 = Some(cmd_char);
             } else if cmd_char.uuid == Self::UNKNOWN2_UUID {
-                // println!("unknown2: {:#?}", cmd_char);
-                // debug_assert!(cmd_char.properties.contains(btleplug::api::CharPropFlags::READ));
-                // let res = device.read(&cmd_char).await?;
-                // println!("response: {:02X?}", res);
                 builder.unknown2 = Some(cmd_char);
             } else if cmd_char.uuid == Self::UNKNOWN3_UUID {
-                // println!("unknown3: {:#?}", cmd_char);
-                // debug_assert!(cmd_char.properties.contains(btleplug::api::CharPropFlags::READ));
-                // let res = device.read(&cmd_char).await?;
-                // println!("response: {:02X?}", res);
                 builder.unknown3 = Some(cmd_char);
             } else if cmd_char.uuid == Self::UNKNOWN4_UUID {
-                // println!("unknown4: {:#?}", cmd_char);
                 builder.unknown4 = Some(cmd_char);
             } else {
-                // println!("???: {:#?}", cmd_char);
                 builder.others.push(cmd_char);
             }
-
-            // println!("-------------------");
         }
 
         if builder.response.is_none() || builder.request.is_none() {
@@ -150,7 +130,35 @@ impl<P: Peripheral> GanCubeV2Builder<P> {
         if !self.device.is_connected().await? {
             self.device.connect().await?;
         }
+
+        // println!("discover services and characteristics...");
         let services = GanCubeV2Services::discover_services(&self.device).await?;
+        // println!("-------------------");
+        // println!("request: {:#?}", services.request);
+        // println!("-------------------");
+        // println!("response: {:#?}", services.response);
+        // println!("-------------------");
+        // if let Some(ref chr) = services.unknown1 {
+        //     println!("unknown1: {:#?}", chr);
+        //     println!("-------------------");
+        // }
+        // if let Some(ref chr) = services.unknown2 {
+        //     println!("unknown2: {:#?}", chr);
+        //     println!("-------------------");
+        // }
+        // if let Some(ref chr) = services.unknown3 {
+        //     println!("unknown3: {:#?}", chr);
+        //     println!("-------------------");
+        // }
+        // if let Some(ref chr) = services.unknown4 {
+        //     println!("unknown4: {:#?}", chr);
+        //     println!("-------------------");
+        // }
+        // for chr in services.others.iter() {
+        //     println!("???: {:#?}", chr);
+        //     println!("-------------------");
+        // }
+
         let cipher = cipher::GanCubeV2Cipher::make_cipher(&self.properties)?;
         Ok(GanCubeV2 {
             device: self.device.clone(),
@@ -229,6 +237,36 @@ impl<P: Peripheral> GanCubeV2<P> {
         self.device
             .write(&self.services.request, &message, WriteType::WithResponse)
             .await?;
+        Ok(())
+    }
+
+    async fn unknown1(&self) -> Result<Vec<u8>, Error> {
+        let Some(ref chr) = self.services.unknown1 else {
+            return Err(DeviceError::InvaidCharacteristics.into());
+        };
+        Ok(self.device.read(chr).await?)
+    }
+
+    async fn unknown2(&self) -> Result<Vec<u8>, Error> {
+        let Some(ref chr) = self.services.unknown2 else {
+            return Err(DeviceError::InvaidCharacteristics.into());
+        };
+        Ok(self.device.read(chr).await?)
+    }
+
+    async fn unknown3(&self) -> Result<Vec<u8>, Error> {
+        let Some(ref chr) = self.services.unknown3 else {
+            return Err(DeviceError::InvaidCharacteristics.into());
+        };
+        Ok(self.device.read(chr).await?)
+    }
+
+    async fn unknown4(&self, mut data: [u8; 20]) -> Result<(), Error> {
+        let Some(ref chr) = self.services.unknown4 else {
+            return Err(DeviceError::InvaidCharacteristics.into());
+        };
+        self.cipher.encrypt(&mut data);
+        self.device.write(chr, &data, WriteType::WithoutResponse).await?;
         Ok(())
     }
 }
