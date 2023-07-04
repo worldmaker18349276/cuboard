@@ -186,13 +186,14 @@ impl<P: Peripheral> GanCubeV2<P> {
                 };
 
                 if notification.uuid != GanCubeV2Services::RESPONSE_UUID {
+                    eprintln!("unknown message: {:?}", notification);
                     continue;
                 }
 
                 let message = match codec::ResponseMessage::decode(&notification.value, &cipher) {
                     Ok(message) => message,
                     Err(err) => {
-                        eprintln!("{}", err);
+                        eprintln!("fail to decode message: {}", err);
                         continue;
                     }
                 };
@@ -300,7 +301,7 @@ mod codec {
         UnrecognizedMessage([u8; 20]),
     }
 
-    // #[rustfmt::skip]
+    #[rustfmt::skip]
     #[repr(u8)]
     #[derive(FromRepr)]
     enum ResponseMessageType {

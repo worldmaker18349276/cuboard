@@ -8,7 +8,7 @@ use std::{
 
 use strum_macros::{Display, EnumIter, EnumString, FromRepr};
 
-// #[rustfmt::skip] // FromRepr break it
+#[rustfmt::skip]
 #[allow(clippy::upper_case_acronyms)]
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Display, EnumIter, FromRepr)]
@@ -45,7 +45,7 @@ impl TryFrom<(u8, u8)> for Corner {
     }
 }
 
-// #[rustfmt::skip]
+#[rustfmt::skip]
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Display, EnumIter, FromRepr)]
 pub enum EdgePosition {
@@ -294,7 +294,7 @@ impl CubeState {
     }
 }
 
-// #[rustfmt::skip]
+#[rustfmt::skip]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, EnumIter, FromRepr)]
 #[repr(u8)]
 pub enum CubeMove {
