@@ -1,5 +1,6 @@
 use btleplug::api::{Central, Manager, ScanFilter};
 use btleplug::platform;
+use cuboard::{CuboardInputState, CuboardKeymap};
 use std::error::Error;
 use std::fs::File;
 use std::io::{stdout, BufRead, BufReader, Write};
@@ -48,7 +49,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!();
 
     let input = CuboardInput::new(DEFAULT_KEYMAP);
-    println!("{}", make_cheatsheet(&input));
+    println!("{}", make_cheatsheet(&DEFAULT_KEYMAP));
     println!();
 
     let input_handler: Box<dyn FnMut(ResponseMessage) + Send> =
@@ -72,7 +73,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn make_cheatsheet(input: &CuboardInput) -> String {
+fn make_cheatsheet(keymap: &CuboardKeymap) -> String {
     const STYLED_TEMPLATE: &str = "
     \x1b[30;44m  {B.3}  \x1b[m     
     \x1b[30;44m{B.2}   {B.0}\x1b[m     
@@ -104,10 +105,10 @@ clockwise   |     clockwise   |counter-clockwise|counter-clockwise
                 s.replace('\n', "↵").replace(' ', "⌴")
             }
             let name = format!("{{{}.{}}}", &side.to_string(), i);
-            a = a.replace(&name, &f(input.keymap[1][side as u8 as usize][i]));
-            b = b.replace(&name, &f(input.keymap[0][side as u8 as usize][i]));
-            c = c.replace(&name, &f(input.keymap[0][side.rev() as u8 as usize][i]));
-            d = d.replace(&name, &f(input.keymap[1][side.rev() as u8 as usize][i]));
+            a = a.replace(&name, &f(keymap[1][side as u8 as usize][i]));
+            b = b.replace(&name, &f(keymap[0][side as u8 as usize][i]));
+            c = c.replace(&name, &f(keymap[0][side.rev() as u8 as usize][i]));
+            d = d.replace(&name, &f(keymap[1][side.rev() as u8 as usize][i]));
         }
     }
 
@@ -135,53 +136,34 @@ impl<F: Write> CuboardInputPrinter<F> {
     }
 
     fn handle_message(&mut self, msg: ResponseMessage) {
-        // ignore messages until the current count is known
-        if self.input.count.is_none() {
-            if let ResponseMessage::State { count, state: _ } = msg {
-                self.input.count = Some(count);
-                let _ = write!(self.terminal, "\r\x1b[7m \x1b[m\n\x1b[100m\x1b[2K\x1b[m");
-                let _ = self.terminal.flush();
-            }
+        if matches!(msg, ResponseMessage::Disconnect) {
+            let _ = writeln!(self.terminal);
             return;
         }
 
-        let (count, moves) = match msg {
-            ResponseMessage::Moves {
-                count,
-                moves,
-                times: _,
-            } => (count, moves),
-            ResponseMessage::Disconnect => {
-                let _ = writeln!(self.terminal);
-                return;
+        match self.input.handle_message(msg) {
+            CuboardInputState::Uninit => {
             }
-            _ => {
-                return;
+            CuboardInputState::Init => {
+                let _ = write!(self.terminal, "\r\x1b[7m \x1b[m\n\x1b[100m\x1b[2K\x1b[m");
+                let _ = self.terminal.flush();
             }
-        };
+            CuboardInputState::None | CuboardInputState::Input { accept: _, skip: _ } => {
+                let text = self.input.text();
+                let _ = write!(
+                    self.terminal,
+                    "\x1b[A\r\x1b[2K{}\x1b[K\x1b[0;7m \x1b[m\n",
+                    text
+                );
+                
+                if text.contains('\n') {
+                    assert!(!text[..text.len() - 1].contains('\n'));
+                    self.input.buffer.finish();
+                }
 
-        let prev_count = self.input.count.unwrap();
-        self.input.count = Some(count);
-
-        let diff = count.wrapping_sub(prev_count).clamp(0, 7) as usize;
-        for &mv in moves[..diff].iter().rev() {
-            if let Some(mv) = mv {
-                self.input.buffer.input(mv);
+                show_input_prompt(&mut self.terminal, &self.input, Self::INPUT_PROMPT_WIDTH);
             }
         }
-
-        let text = self.input.text();
-        let _ = write!(
-            self.terminal,
-            "\x1b[A\r\x1b[2K{}\x1b[K\x1b[0;7m \x1b[m\n",
-            text
-        );
-        if text.contains('\n') {
-            assert!(!text[..text.len() - 1].contains('\n'));
-            self.input.buffer.finish();
-        }
-
-        show_input_prompt(&mut self.terminal, &self.input, Self::INPUT_PROMPT_WIDTH);
     }
 
     const INPUT_PROMPT_WIDTH: usize = 12;
@@ -237,10 +219,15 @@ impl<F: Write, T: Iterator<Item = String>> CuboardInputTrainer<F, T> {
     }
 
     fn handle_message(&mut self, msg: ResponseMessage) {
-        if self.input.count.is_none() {
-            if let ResponseMessage::State { count, state: _ } = msg {
-                self.input.count = Some(count);
+        if matches!(msg, ResponseMessage::Disconnect) {
+            let _ = writeln!(self.terminal);
+            return;
+        }
 
+        match self.input.handle_message(msg) {
+            CuboardInputState::Uninit => {
+            }
+            CuboardInputState::Init => {
                 let cursor = self.lines[0].chars().next().unwrap_or(' ');
                 let _ = write!(self.terminal, "\x1b[2m{}\x1b[m", self.lines[0]);
                 let _ = write!(self.terminal, "\r\x1b[7m{}\x1b[m\n", cursor);
@@ -250,86 +237,60 @@ impl<F: Write, T: Iterator<Item = String>> CuboardInputTrainer<F, T> {
                 let _ = write!(self.terminal, "\r\x1b[100m\x1b[2K \x1b[m\r");
                 let _ = self.terminal.flush();
             }
-
-            return;
-        }
-
-        let (count, moves) = match msg {
-            ResponseMessage::Moves {
-                count,
-                moves,
-                times: _,
-            } => (count, moves),
-            ResponseMessage::Disconnect => {
-                let _ = writeln!(self.terminal);
-                return;
-            }
-            _ => {
-                return;
-            }
-        };
-
-        let prev_count = self.input.count.unwrap();
-        self.input.count = Some(count);
-
-        let diff = count.wrapping_sub(prev_count).clamp(0, 7) as usize;
-        for &mv in moves[..diff].iter().rev() {
-            if let Some(mv) = mv {
-                self.input.buffer.input(mv);
-            }
-        }
-
-        let _ = write!(self.terminal, "\x1b[{}A", self.lines.len());
-        for line in self.lines.iter() {
-            let _ = writeln!(self.terminal, "\r\x1b[2m\x1b[2K{}\x1b[m", line);
-        }
-
-        let text = self.input.text();
-        let decoreated_text: String = text
-            .trim_end_matches('\n')
-            .chars()
-            .zip(self.lines[0].chars().chain([' '].into_iter().cycle()))
-            .map(|(a, b)| {
-                if a == b {
-                    format!("{}", a)
-                } else {
-                    format!("\x1b[41m{}\x1b[m", a)
+            CuboardInputState::None | CuboardInputState::Input { accept: _, skip: _ } => {
+                let _ = write!(self.terminal, "\x1b[{}A", self.lines.len());
+                for line in self.lines.iter() {
+                    let _ = writeln!(self.terminal, "\r\x1b[2m\x1b[2K{}\x1b[m", line);
                 }
-            })
-            .collect();
 
-        let _ = write!(self.terminal, "\x1b[{}A", self.lines.len());
-        if text.contains('\n') {
-            let cursor = self.lines[1].chars().next().unwrap_or(' ');
-            let _ = write!(
-                self.terminal,
-                "\r{}\n\x1b[7m{}\x1b[m",
-                decoreated_text, cursor
-            );
-        } else {
-            let cursor = self.lines[0].chars().nth(text.len()).unwrap_or(' ');
-            let _ = write!(
-                self.terminal,
-                "\r{}\x1b[7m{}\x1b[m\n",
-                decoreated_text, cursor
-            );
+                let text = self.input.text();
+                let decoreated_text: String = text
+                    .trim_end_matches('\n')
+                    .chars()
+                    .zip(self.lines[0].chars().chain([' '].into_iter().cycle()))
+                    .map(|(a, b)| {
+                        if a == b {
+                            format!("{}", a)
+                        } else {
+                            format!("\x1b[41m{}\x1b[m", a)
+                        }
+                    })
+                    .collect();
+
+                let _ = write!(self.terminal, "\x1b[{}A", self.lines.len());
+                if text.contains('\n') {
+                    let cursor = self.lines[1].chars().next().unwrap_or(' ');
+                    let _ = write!(
+                        self.terminal,
+                        "\r{}\n\x1b[7m{}\x1b[m",
+                        decoreated_text, cursor
+                    );
+                } else {
+                    let cursor = self.lines[0].chars().nth(text.len()).unwrap_or(' ');
+                    let _ = write!(
+                        self.terminal,
+                        "\r{}\x1b[7m{}\x1b[m\n",
+                        decoreated_text, cursor
+                    );
+                }
+                let _ = write!(self.terminal, "\x1b[{}B\r", self.lines.len() - 1);
+
+                if text.contains('\n') {
+                    assert!(!text[..text.len() - 1].contains('\n'));
+                    let new_line = self.text.next().unwrap_or_default();
+                    let _ = write!(
+                        self.terminal,
+                        "\r\x1b[m\x1b[2K\r\x1b[2m{}\x1b[m\n",
+                        new_line
+                    );
+                    self.input.buffer.finish();
+                    self.lines.rotate_left(1);
+                    self.lines[self.lines.len() - 1] = new_line;
+                }
+
+                show_input_prompt(&mut self.terminal, &self.input, Self::INPUT_PROMPT_WIDTH);
+            }
         }
-        let _ = write!(self.terminal, "\x1b[{}B\r", self.lines.len() - 1);
-
-        if text.contains('\n') {
-            assert!(!text[..text.len() - 1].contains('\n'));
-            let new_line = self.text.next().unwrap_or_default();
-            let _ = write!(
-                self.terminal,
-                "\r\x1b[m\x1b[2K\r\x1b[2m{}\x1b[m\n",
-                new_line
-            );
-            self.input.buffer.finish();
-            self.lines.rotate_left(1);
-            self.lines[self.lines.len() - 1] = new_line;
-        }
-
-        show_input_prompt(&mut self.terminal, &self.input, Self::INPUT_PROMPT_WIDTH);
     }
 
     const INPUT_PROMPT_WIDTH: usize = 12;

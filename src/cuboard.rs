@@ -2,7 +2,10 @@
 
 use std::ops::Range;
 
-use crate::cube::{CubeMove, format_moves};
+use crate::{
+    bluetooth::gancubev2::ResponseMessage,
+    cube::{format_moves, CubeMove},
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum CuboardInputError {
@@ -169,7 +172,7 @@ impl CuboardBuffer {
 pub struct CuboardInput {
     pub buffer: CuboardBuffer,
     pub keymap: CuboardKeymap,
-    pub count: Option<u8>,
+    count: Option<u8>,
 }
 
 pub type CuboardKeymap = [[[&'static str; 4]; 12]; 2];
@@ -205,6 +208,14 @@ pub const DEFAULT_KEYMAP: CuboardKeymap = [
     ],
 ];
 
+#[derive(Clone, Copy)]
+pub enum CuboardInputState {
+    Uninit,
+    Init,
+    None,
+    Input { accept: usize, skip: usize },
+}
+
 impl CuboardInput {
     pub fn new(keymap: CuboardKeymap) -> Self {
         CuboardInput {
@@ -230,5 +241,33 @@ impl CuboardInput {
 
     pub fn remain_part(&self) -> String {
         format_moves(self.buffer.remains())
+    }
+
+    pub fn handle_message(&mut self, msg: ResponseMessage) -> CuboardInputState {
+        // ignore messages until the current count is known
+        if self.count.is_none() {
+            if let ResponseMessage::State { count, state: _ } = msg {
+                self.count = Some(count);
+                return CuboardInputState::Init;
+            } else {
+                return CuboardInputState::Uninit;
+            }
+        }
+
+        let ResponseMessage::Moves { count, moves, times: _ } = msg else {
+            return CuboardInputState::None;
+        };
+
+        let prev_count = self.count.unwrap();
+        self.count = Some(count);
+
+        let diff = count.wrapping_sub(prev_count) as usize;
+        for &mv in moves[..diff.clamp(0, 7)].iter().rev() {
+            if let Some(mv) = mv {
+                self.buffer.input(mv);
+            }
+        }
+
+        CuboardInputState::Input { accept: diff.clamp(0, 7), skip: 7usize.saturating_sub(diff) }
     }
 }
