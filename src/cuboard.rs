@@ -2,7 +2,7 @@
 
 use std::ops::Range;
 
-use crate::cube::CubeMove;
+use crate::cube::{CubeMove, format_moves};
 
 #[derive(Debug, thiserror::Error)]
 pub enum CuboardInputError {
@@ -163,5 +163,72 @@ impl CuboardBuffer {
         }
 
         key_changed
+    }
+}
+
+pub struct CuboardInput {
+    pub buffer: CuboardBuffer,
+    pub keymap: CuboardKeymap,
+    pub count: Option<u8>,
+}
+
+pub type CuboardKeymap = [[[&'static str; 4]; 12]; 2];
+
+pub const DEFAULT_KEYMAP: CuboardKeymap = [
+    [
+        ["d", "u", "c", "k"], // U
+        ["(", "[", "{", "<"], // U'
+        ["g", "a", "s", "p"], // R
+        ["0", " ", "z", "q"], // R'
+        ["f", "l", "o", "w"], // F
+        ["'", ".", ":", "!"], // F'
+        ["j", "i", "n", "x"], // D
+        ["+", "-", "*", "/"], // D'
+        ["m", "y", "t", "h"], // L
+        ["1", "2", "3", "4"], // L'
+        ["v", "e", "r", "b"], // B
+        ["#", "~", "&", "_"], // B'
+    ],
+    [
+        ["D", "U", "C", "K"],  // U
+        [")", "]", "}", ">"],  // U'
+        ["G", "A", "S", "P"],  // R
+        ["9", "\n", "Z", "Q"], // R'
+        ["F", "L", "O", "W"],  // F
+        ["\"", ",", ";", "?"], // F'
+        ["J", "I", "N", "X"],  // D
+        ["=", "|", "^", "\\"], // D'
+        ["M", "Y", "T", "H"],  // L
+        ["5", "6", "7", "8"],  // L'
+        ["V", "E", "R", "B"],  // B
+        ["@", "$", "%", "`"],  // B'
+    ],
+];
+
+impl CuboardInput {
+    pub fn new(keymap: CuboardKeymap) -> Self {
+        CuboardInput {
+            buffer: CuboardBuffer::new(),
+            keymap,
+            count: None,
+        }
+    }
+
+    pub fn text(&self) -> String {
+        self.buffer
+            .keys()
+            .iter()
+            .map(|k| self.keymap[k.0.is_shifted as usize][k.0.main as u8 as usize][k.0.num])
+            .collect()
+    }
+
+    pub fn complete_part(&self) -> String {
+        let moves = self.buffer.moves();
+        let complete = &moves[..moves.len() - self.buffer.remains().len()];
+        format_moves(complete)
+    }
+
+    pub fn remain_part(&self) -> String {
+        format_moves(self.buffer.remains())
     }
 }

@@ -1,6 +1,5 @@
 use btleplug::api::{Central, Manager, ScanFilter};
 use btleplug::platform;
-use cube::format_moves;
 use std::error::Error;
 use std::fs::File;
 use std::io::{stdout, BufRead, BufReader, Write};
@@ -9,7 +8,7 @@ use tokio::time::{sleep, Duration};
 
 use bluetooth::gancubev2::{GanCubeV2Builder, ResponseMessage};
 
-use crate::cuboard::CuboardBuffer;
+use crate::cuboard::{CuboardInput, DEFAULT_KEYMAP};
 
 mod bluetooth;
 mod cube;
@@ -49,7 +48,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!();
 
     let input = CuboardInput::new(DEFAULT_KEYMAP);
-    println!("{}", input.make_cheatsheet());
+    println!("{}", make_cheatsheet(&input));
     println!();
 
     let input_handler: Box<dyn FnMut(ResponseMessage) + Send> =
@@ -73,123 +72,56 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-struct CuboardInput {
-    buffer: CuboardBuffer,
-    keymap: CuboardKeymap,
-    count: Option<u8>,
-}
-
-type CuboardKeymap = [[[&'static str; 4]; 12]; 2];
-
-const DEFAULT_KEYMAP: CuboardKeymap = [
-    [
-        ["d", "u", "c", "k"], // U
-        ["(", "[", "{", "<"], // U'
-        ["g", "a", "s", "p"], // R
-        ["0", " ", "z", "q"], // R'
-        ["f", "l", "o", "w"], // F
-        ["'", ".", ":", "!"], // F'
-        ["j", "i", "n", "x"], // D
-        ["+", "-", "*", "/"], // D'
-        ["m", "y", "t", "h"], // L
-        ["1", "2", "3", "4"], // L'
-        ["v", "e", "r", "b"], // B
-        ["#", "~", "&", "_"], // B'
-    ],
-    [
-        ["D", "U", "C", "K"],  // U
-        [")", "]", "}", ">"],  // U'
-        ["G", "A", "S", "P"],  // R
-        ["9", "\n", "Z", "Q"], // R'
-        ["F", "L", "O", "W"],  // F
-        ["\"", ",", ";", "?"], // F'
-        ["J", "I", "N", "X"],  // D
-        ["=", "|", "^", "\\"], // D'
-        ["M", "Y", "T", "H"],  // L
-        ["5", "6", "7", "8"],  // L'
-        ["V", "E", "R", "B"],  // B
-        ["@", "$", "%", "`"],  // B'
-    ],
-];
-
-impl CuboardInput {
-    fn new(keymap: CuboardKeymap) -> Self {
-        CuboardInput {
-            buffer: CuboardBuffer::new(),
-            keymap,
-            count: None,
-        }
-    }
-
-    fn text(&self) -> String {
-        self.buffer
-            .keys()
-            .iter()
-            .map(|k| self.keymap[k.0.is_shifted as usize][k.0.main as u8 as usize][k.0.num])
-            .collect()
-    }
-
-    fn complete_part(&self) -> String {
-        let moves = self.buffer.moves();
-        let complete = &moves[..moves.len() - self.buffer.remains().len()];
-        format_moves(complete)
-    }
-
-    fn remain_part(&self) -> String {
-        format_moves(self.buffer.remains())
-    }
-
-    fn make_cheatsheet(&self) -> String {
-        const STYLED_TEMPLATE: &str = "
-     \x1b[30;44m  {B.3}  \x1b[m     
-     \x1b[30;44m{B.2}   {B.0}\x1b[m     
-     \x1b[30;44m  {B.1}  \x1b[m     
-     \x1b[30;47m  {U.1}  \x1b[m     
-     \x1b[30;47m{U.0}   {U.2}\x1b[m     
-     \x1b[30;47m  {U.3}  \x1b[m     
+fn make_cheatsheet(input: &CuboardInput) -> String {
+    const STYLED_TEMPLATE: &str = "
+    \x1b[30;44m  {B.3}  \x1b[m     
+    \x1b[30;44m{B.2}   {B.0}\x1b[m     
+    \x1b[30;44m  {B.1}  \x1b[m     
+    \x1b[30;47m  {U.1}  \x1b[m     
+    \x1b[30;47m{U.0}   {U.2}\x1b[m     
+    \x1b[30;47m  {U.3}  \x1b[m     
 \x1b[30;45m  {L.3}  \x1b[42m  {F.0}  \x1b[41m  {R.2}  \x1b[m
 \x1b[30;45m{L.2}   {L.0}\x1b[42m{F.3}   {F.1}\x1b[41m{R.1}   {R.3}\x1b[m
 \x1b[30;45m  {L.1}  \x1b[42m  {F.2}  \x1b[41m  {R.0}  \x1b[m
-     \x1b[30;43m  {D.2}  \x1b[m     
-     \x1b[30;43m{D.1}   {D.3}\x1b[m     
-     \x1b[30;43m  {D.0}  \x1b[m     
+    \x1b[30;43m  {D.2}  \x1b[m     
+    \x1b[30;43m{D.1}   {D.3}\x1b[m     
+    \x1b[30;43m  {D.0}  \x1b[m     
 ";
-        const STYLED_TEMPLATE_BAR: &str = "CHEAT SHEET:
-     double     |      single     |     single      |     double
-    clockwise   |     clockwise   |counter-clockwise|counter-clockwise
+    const STYLED_TEMPLATE_BAR: &str = "CHEAT SHEET:
+    double     |      single     |     single      |     double
+clockwise   |     clockwise   |counter-clockwise|counter-clockwise
 ----------------|-----------------|-----------------|-----------------
 ";
-        use cube::CubeMove::*;
-        let mut a = STYLED_TEMPLATE.to_string();
-        let mut b = STYLED_TEMPLATE.to_string();
-        let mut c = STYLED_TEMPLATE.to_string();
-        let mut d = STYLED_TEMPLATE.to_string();
+    use cube::CubeMove::*;
+    let mut a = STYLED_TEMPLATE.to_string();
+    let mut b = STYLED_TEMPLATE.to_string();
+    let mut c = STYLED_TEMPLATE.to_string();
+    let mut d = STYLED_TEMPLATE.to_string();
 
-        for side in [U, D, F, B, L, R] {
-            for i in 0..4 {
-                fn f(s: &str) -> String {
-                    s.replace('\n', "↵").replace(' ', "⌴")
-                }
-                let name = format!("{{{}.{}}}", &side.to_string(), i);
-                a = a.replace(&name, &f(self.keymap[1][side as u8 as usize][i]));
-                b = b.replace(&name, &f(self.keymap[0][side as u8 as usize][i]));
-                c = c.replace(&name, &f(self.keymap[0][side.rev() as u8 as usize][i]));
-                d = d.replace(&name, &f(self.keymap[1][side.rev() as u8 as usize][i]));
+    for side in [U, D, F, B, L, R] {
+        for i in 0..4 {
+            fn f(s: &str) -> String {
+                s.replace('\n', "↵").replace(' ', "⌴")
             }
+            let name = format!("{{{}.{}}}", &side.to_string(), i);
+            a = a.replace(&name, &f(input.keymap[1][side as u8 as usize][i]));
+            b = b.replace(&name, &f(input.keymap[0][side as u8 as usize][i]));
+            c = c.replace(&name, &f(input.keymap[0][side.rev() as u8 as usize][i]));
+            d = d.replace(&name, &f(input.keymap[1][side.rev() as u8 as usize][i]));
         }
-
-        let a = a.trim_matches('\n').split('\n');
-        let b = b.trim_matches('\n').split('\n');
-        let c = c.trim_matches('\n').split('\n');
-        let d = d.trim_matches('\n').split('\n');
-        STYLED_TEMPLATE_BAR.to_string()
-            + &a.zip(b)
-                .zip(c)
-                .zip(d)
-                .map(|(((a, b), c), d)| [a, b, c, d].join(" | "))
-                .collect::<Vec<_>>()
-                .join("\n")
     }
+
+    let a = a.trim_matches('\n').split('\n');
+    let b = b.trim_matches('\n').split('\n');
+    let c = c.trim_matches('\n').split('\n');
+    let d = d.trim_matches('\n').split('\n');
+    STYLED_TEMPLATE_BAR.to_string()
+        + &a.zip(b)
+            .zip(c)
+            .zip(d)
+            .map(|(((a, b), c), d)| [a, b, c, d].join(" | "))
+            .collect::<Vec<_>>()
+            .join("\n")
 }
 
 struct CuboardInputPrinter<F: Write> {
