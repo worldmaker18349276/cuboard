@@ -132,9 +132,10 @@ The full cheatsheet can be drawn as:
 ## TODO
 - [ ] customize keymap.
 - [ ] remap orientation.
-- [ ] merge gancubev2-reverse-engineering.
+- [x] merge gancubev2-reverse-engineering.
 - [ ] SU(2) CubeState.
 - [ ] shake to cancel.
 - [ ] dual setting switch by turning around.
-- [ ] mimic keyboard event.
+- [ ] mimic keyboard event (use https://github.com/obv-mikhail/InputBot).
 - [ ] gui.
+- [ ] visualize 3D cuboard (use https://github.com/sebcrozet/kiss3d).

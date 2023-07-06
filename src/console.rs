@@ -231,7 +231,7 @@ fn handle_message(message: ResponseMessage) {
         ResponseMessage::State { count, state } => {
             print!("{}<!> ", CREL);
             print!("count={:3}, ", count);
-            if let Some(CubeState { corners, edges, center: _ }) = state {
+            if let Some(CubeState { corners, edges, centers: _ }) = state {
                 print!(
                     "corners={:X?} / {:X?}, ",
                     corners.map(|c| c.0.repr()),

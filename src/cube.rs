@@ -149,7 +149,7 @@ impl<const N: u8> Neg for PieceOrientation<N> {
 #[rustfmt::skip]
 #[allow(clippy::upper_case_acronyms)]
 #[repr(u8)]
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Display, EnumIter, EnumString)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display, EnumIter, EnumString)]
 pub enum CubeOrientation {
     // <A><B><C><D><E><F>: move <A>/<B>/<C>/<D>/<E>/<F> face to up/right/front/down/left/back
     URFDLB, UFLDBR, ULBDRF, UBRDFL, DFRUBL, DLFURB, DBLUFR, DRBULF, // CornerPosition
@@ -259,7 +259,7 @@ impl Neg for CubeOrientation {
 pub struct CubeState {
     pub corners: [Corner; 8],
     pub edges: [Edge; 12],
-    pub center: [Center; 6],
+    pub centers: [Center; 6],
 }
 
 impl Default for CubeState {
@@ -285,12 +285,12 @@ impl CubeState {
         CubeState {
             corners,
             edges,
-            center: [0.try_into().unwrap(); 6],
+            centers: [0.try_into().unwrap(); 6],
         }
     }
 
     pub fn reset_centers(&mut self) {
-        self.center = [0.try_into().unwrap(); 6];
+        self.centers = [0.try_into().unwrap(); 6];
     }
 }
 
