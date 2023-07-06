@@ -15,3 +15,5 @@ tokio = { version = "1.24.2", features = ["full"] }
 strum = "0.25.0"
 strum_macros = "0.25.1"
 try-block = "0.1.0"
+defer = "0.1.0"
+termios = "0.3.3"

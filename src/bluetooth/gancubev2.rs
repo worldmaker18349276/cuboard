@@ -241,7 +241,7 @@ impl<P: Peripheral> GanCubeV2<P> {
         Ok(())
     }
 
-    async fn arbitrary_request(&self, mut message: [u8; 20], response: bool) -> Result<(), Error> {
+    pub async fn arbitrary_request(&self, mut message: [u8; 20], response: bool) -> Result<(), Error> {
         self.cipher.encrypt(&mut message);
         let write_type = if response { WriteType::WithResponse } else { WriteType::WithoutResponse };
         self.device
@@ -250,28 +250,28 @@ impl<P: Peripheral> GanCubeV2<P> {
         Ok(())
     }
 
-    async fn unknown1(&self) -> Result<Vec<u8>, Error> {
+    pub async fn unknown1(&self) -> Result<Vec<u8>, Error> {
         let Some(ref chr) = self.services.unknown1 else {
             return Err(DeviceError::InvaidCharacteristics.into());
         };
         Ok(self.device.read(chr).await?)
     }
 
-    async fn unknown2(&self) -> Result<Vec<u8>, Error> {
+    pub async fn unknown2(&self) -> Result<Vec<u8>, Error> {
         let Some(ref chr) = self.services.unknown2 else {
             return Err(DeviceError::InvaidCharacteristics.into());
         };
         Ok(self.device.read(chr).await?)
     }
 
-    async fn unknown3(&self) -> Result<Vec<u8>, Error> {
+    pub async fn unknown3(&self) -> Result<Vec<u8>, Error> {
         let Some(ref chr) = self.services.unknown3 else {
             return Err(DeviceError::InvaidCharacteristics.into());
         };
         Ok(self.device.read(chr).await?)
     }
 
-    async fn unknown4(&self, mut data: [u8; 20]) -> Result<(), Error> {
+    pub async fn unknown4(&self, mut data: [u8; 20]) -> Result<(), Error> {
         let Some(ref chr) = self.services.unknown4 else {
             return Err(DeviceError::InvaidCharacteristics.into());
         };
