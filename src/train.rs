@@ -110,22 +110,22 @@ pub async fn cuboard_input_trainer(text_filename: String) -> Result<(), Box<dyn 
 
 fn make_cheatsheet(keymap: &CuboardKeymap) -> String {
     const STYLED_TEMPLATE: &str = "
-    \x1b[30;44m  {B.3}  \x1b[m     
-    \x1b[30;44m{B.2}   {B.0}\x1b[m     
-    \x1b[30;44m  {B.1}  \x1b[m     
-    \x1b[30;47m  {U.1}  \x1b[m     
-    \x1b[30;47m{U.0}   {U.2}\x1b[m     
-    \x1b[30;47m  {U.3}  \x1b[m     
+     \x1b[30;44m  {B.3}  \x1b[m     
+     \x1b[30;44m{B.2}   {B.0}\x1b[m     
+     \x1b[30;44m  {B.1}  \x1b[m     
+     \x1b[30;47m  {U.1}  \x1b[m     
+     \x1b[30;47m{U.0}   {U.2}\x1b[m     
+     \x1b[30;47m  {U.3}  \x1b[m     
 \x1b[30;45m  {L.3}  \x1b[42m  {F.0}  \x1b[41m  {R.2}  \x1b[m
 \x1b[30;45m{L.2}   {L.0}\x1b[42m{F.3}   {F.1}\x1b[41m{R.1}   {R.3}\x1b[m
 \x1b[30;45m  {L.1}  \x1b[42m  {F.2}  \x1b[41m  {R.0}  \x1b[m
-    \x1b[30;43m  {D.2}  \x1b[m     
-    \x1b[30;43m{D.1}   {D.3}\x1b[m     
-    \x1b[30;43m  {D.0}  \x1b[m     
+     \x1b[30;43m  {D.2}  \x1b[m     
+     \x1b[30;43m{D.1}   {D.3}\x1b[m     
+     \x1b[30;43m  {D.0}  \x1b[m     
 ";
     const STYLED_TEMPLATE_BAR: &str = "CHEAT SHEET:
-    double     |      single     |     single      |     double
-clockwise   |     clockwise   |counter-clockwise|counter-clockwise
+     double     |      single     |     single      |     double
+    clockwise   |     clockwise   |counter-clockwise|counter-clockwise
 ----------------|-----------------|-----------------|-----------------
 ";
     use crate::cube::CubeMove::*;

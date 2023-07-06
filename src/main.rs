@@ -1,9 +1,9 @@
 use std::error::Error;
 
-use cli::{cuboard_input_printer, cuboard_input_trainer};
+use train::{cuboard_input_printer, cuboard_input_trainer};
 
 mod bluetooth;
-mod cli;
+mod train;
 mod cube;
 mod cuboard;
 mod console;
