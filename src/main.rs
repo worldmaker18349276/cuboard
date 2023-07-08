@@ -2,11 +2,12 @@ use std::error::Error;
 
 use train::{cuboard_input_printer, cuboard_input_trainer};
 
+mod algorithm;
 mod bluetooth;
-mod train;
+mod console;
 mod cube;
 mod cuboard;
-mod console;
+mod train;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -17,16 +18,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Some(command) if command == "console" => {
             console::run().await?;
         }
-        Some(command) if command == "train" => {
-            match text_filename {
-                Some(filename) => {
-                    cuboard_input_trainer(filename).await?;
-                }
-                None => {
-                    cuboard_input_printer().await?;
-                }
+        Some(command) if command == "train" => match text_filename {
+            Some(filename) => {
+                cuboard_input_trainer(filename).await?;
             }
-        }
+            None => {
+                cuboard_input_printer().await?;
+            }
+        },
         _ => {
             println!("unknown command");
         }
