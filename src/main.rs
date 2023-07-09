@@ -19,6 +19,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Some(command) if command == "console" => {
             console::run().await?;
         }
+        Some(command) if command == "cube" => {
+            view::window::run().await?;
+        }
         Some(command) if command == "train" => match text_filename {
             Some(filename) => {
                 cuboard_input_trainer(filename).await?;

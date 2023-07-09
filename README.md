@@ -139,3 +139,4 @@ The full cheatsheet can be drawn as:
 - [ ] mimic keyboard event (use https://github.com/obv-mikhail/InputBot).
 - [ ] gui.
 - [ ] visualize 3D cuboard (use https://github.com/sebcrozet/kiss3d).
+   - draw text on texture: https://docs.rs/imageproc/latest/imageproc/drawing/fn.draw_text.html
