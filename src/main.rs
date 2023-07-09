@@ -7,6 +7,7 @@ mod bluetooth;
 mod console;
 mod cube;
 mod cuboard;
+mod view;
 mod train;
 
 #[tokio::main]
