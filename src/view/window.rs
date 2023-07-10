@@ -46,8 +46,30 @@ impl VirtualCuboard {
     }
 }
 
+struct UnitQuaternionSmoother<const N: usize>([UnitQuaternion<f32>; N], usize);
+
+impl<const N: usize> UnitQuaternionSmoother<N> {
+    fn new() -> Self {
+        UnitQuaternionSmoother([UnitQuaternion::default(); N], 0)
+    }
+
+    fn put(&mut self, q: UnitQuaternion<f32>) {
+        self.0[self.1] = q;
+        self.1 = (self.1 + 1) % N;
+    }
+
+    fn get(&self) -> UnitQuaternion<f32> {
+        let q = self
+            .0
+            .iter()
+            .map(|q| q.quaternion())
+            .fold(Quaternion::default(), |acc, q| acc + q);
+        UnitQuaternion::new_normalize(q)
+    }
+}
+
 pub async fn run() -> Result<(), Box<dyn Error>> {
-    let orientation = Arc::new(Mutex::new(UnitQuaternion::default()));
+    let orientation = Arc::new(Mutex::new(UnitQuaternionSmoother::<5>::new()));
 
     // get the first bluetooth adapter
     let manager = platform::Manager::new().await.unwrap();
@@ -89,7 +111,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
                 return;
             };
 
-            *ori = UnitQuaternion::new_normalize(Quaternion::new(q1.0, q1.2, q1.3, q1.1));
+            ori.put(UnitQuaternion::new_normalize(Quaternion::new(q1.0, q1.2, q1.3, q1.1)))
         }))
         .await?;
 
@@ -102,7 +124,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
             return;
         };
 
-        cube.node.set_local_rotation(*ori);
+        cube.node.set_local_rotation(ori.get());
     });
 
     Ok(())
