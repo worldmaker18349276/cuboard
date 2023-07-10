@@ -1,8 +1,4 @@
-use kiss3d::camera::ArcBall;
-use kiss3d::light::Light;
-use kiss3d::nalgebra::{Point3, Quaternion, UnitQuaternion};
-use kiss3d::scene::SceneNode;
-use kiss3d::window::Window;
+use kiss3d::nalgebra::{Quaternion, UnitQuaternion};
 
 use btleplug::api::{Central, Manager, ScanFilter};
 use btleplug::platform;
@@ -12,39 +8,7 @@ use std::sync::{Arc, Mutex};
 use tokio::time::{sleep, Duration};
 
 use crate::bluetooth::gancubev2::{GanCubeV2Builder, ResponseMessage};
-
-use super::virtualcube::VirtualCubeMeshes;
-
-struct VirtualCuboard {
-    meshes: VirtualCubeMeshes,
-    window: Window,
-    node: SceneNode,
-}
-
-impl VirtualCuboard {
-    pub fn new() -> Self {
-        let mut window = Window::new("cube");
-        let mut node = window.add_group();
-        let meshes = VirtualCubeMeshes::new(0.2, 0.02, 0.1);
-        meshes.add_meshes(&mut node);
-        VirtualCuboard {
-            meshes,
-            window,
-            node,
-        }
-    }
-
-    pub fn render_loop<F: FnMut(&mut Self)>(&mut self, mut f: F) {
-        self.window.set_light(Light::StickToCamera);
-
-        let mut camera = ArcBall::new(Point3::new(0.5, 0.7, 1.0), Point3::default());
-        camera.rebind_drag_button(None);
-
-        while self.window.render_with_camera(&mut camera) {
-            f(self)
-        }
-    }
-}
+use crate::view::virtualcube::VirtualCuboard;
 
 struct UnitQuaternionSmoother<const N: usize>([UnitQuaternion<f32>; N], usize);
 
@@ -103,7 +67,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     let orientation_msg = Arc::clone(&orientation);
     gancube
         .register_handler(Box::new(move |msg| {
-            let ResponseMessage::Gyroscope { q1, q1p: _, q2: _, q2p: _ } = msg else {
+            let ResponseMessage::Gyroscope { q1, q1p: _, q2, q2p: _ } = msg else {
                 return;
             };
 
@@ -111,7 +75,9 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
                 return;
             };
 
-            ori.put(UnitQuaternion::new_normalize(Quaternion::new(q1.0, q1.2, q1.3, q1.1)))
+            let q1 = Quaternion::new(q1.0, q1.2, q1.3, q1.1);
+            let q2 = Quaternion::new(q2.0, q2.2, q2.3, q2.1);
+            ori.put(UnitQuaternion::new_normalize(q1 + q2))
         }))
         .await?;
 
@@ -124,7 +90,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
             return;
         };
 
-        cube.node.set_local_rotation(ori.get());
+        cube.set_orientation(ori.get());
     });
 
     Ok(())
