@@ -90,7 +90,9 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
             return;
         };
 
-        cube.set_orientation(ori.get());
+        let orientation = ori.get();
+        cube.set_orientation(orientation);
+        // cube.offset_color_by_orientation2(orientation);
     });
 
     Ok(())
