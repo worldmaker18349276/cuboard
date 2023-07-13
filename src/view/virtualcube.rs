@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::{cell::RefCell, f32::consts::PI, ops::Mul, rc::Rc};
+use std::{cell::RefCell, f32::consts::PI, ops::{Mul, Neg}, rc::Rc};
 
 use kiss3d::{
     camera::{ArcBall, Camera},
@@ -184,7 +184,7 @@ impl VirtualCuboard {
         let eye = self.camera.eye();
         let eye = Vector3::new(eye.x, eye.y, eye.z).normalize();
         let angles = core::array::from_fn(|f| {
-            dot(orientation * rotate_to(eye, CENTERS[f]), eye)
+            spin_angle(orientation * rotate_to(eye, CENTERS[f]), eye)
                 .mul(180.0 / PI)
                 .rem_euclid(360.0)
         });
@@ -202,6 +202,6 @@ fn rotate_to(v1: Vector3<f32>, v2: Vector3<f32>) -> UnitQuaternion<f32> {
     UnitQuaternion::new_normalize(Quaternion::new(w, xyz.x, xyz.y, xyz.z))
 }
 
-fn dot(q: UnitQuaternion<f32>, v: Vector3<f32>) -> f32 {
-    Vector3::new(q.i, q.j, q.k).dot(&v).atan2(-q.w)
+fn spin_angle(q: UnitQuaternion<f32>, v: Vector3<f32>) -> f32 {
+    Vector3::new(q.i, q.j, q.k).dot(&v.normalize()).neg().atan2(q.w)
 }
