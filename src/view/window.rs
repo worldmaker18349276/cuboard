@@ -1,3 +1,4 @@
+use kiss3d::camera::Camera;
 use kiss3d::nalgebra::{Quaternion, UnitQuaternion};
 
 use btleplug::api::{Central, Manager, ScanFilter};
@@ -8,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use tokio::time::{sleep, Duration};
 
 use crate::bluetooth::gancubev2::{GanCubeV2Builder, ResponseMessage};
-use crate::view::virtualcube::VirtualCuboard;
+use crate::view::virtualcube::{VirtualCuboard, set_colors_spin};
 
 struct UnitQuaternionSmoother<const N: usize>([UnitQuaternion<f32>; N], usize);
 
@@ -92,7 +93,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 
         let orientation = ori.get();
         cube.set_orientation(orientation);
-        // cube.offset_color_by_orientation2(orientation);
+        // set_colors_spin(&mut cube.components, cube.camera.eye(), orientation);
     });
 
     Ok(())

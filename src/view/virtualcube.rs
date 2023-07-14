@@ -3,7 +3,7 @@
 use std::{cell::RefCell, f32::consts::PI, ops::{Mul, Neg}, rc::Rc};
 
 use kiss3d::{
-    camera::{ArcBall, Camera},
+    camera::ArcBall,
     light::Light,
     nalgebra::{Point3, Quaternion, UnitQuaternion, Vector3},
     resource::Mesh,
@@ -108,35 +108,6 @@ pub fn set_backface_visible(nodes: &mut VirtualCubeNodes, visible: bool) {
     }
 }
 
-#[allow(clippy::needless_range_loop)]
-pub fn set_color(nodes: &mut VirtualCubeNodes, hue_offset: f32) {
-    for f in 0..6 {
-        for r in 0..3 {
-            for c in 0..3 {
-                let (face_f, face_b) = &mut nodes[f][r][c];
-                let hue = (60.0 * (f as f32) + hue_offset).rem_euclid(360.0);
-                let color: Rgb = Hsv::new(hue, 1.0, 1.0).into_color();
-                face_b.set_color(color.red, color.green, color.blue);
-                face_f.set_color(color.red, color.green, color.blue);
-            }
-        }
-    }
-}
-
-pub fn set_colors(nodes: &mut VirtualCubeNodes, hue_offsets: [f32; 6]) {
-    for f in 0..6 {
-        for r in 0..3 {
-            for c in 0..3 {
-                let (face_f, face_b) = &mut nodes[f][r][c];
-                let hue = (60.0 * (f as f32) + hue_offsets[f]).rem_euclid(360.0);
-                let color: Rgb = Hsv::new(hue, 1.0, 1.0).into_color();
-                face_b.set_color(color.red, color.green, color.blue);
-                face_f.set_color(color.red, color.green, color.blue);
-            }
-        }
-    }
-}
-
 pub struct VirtualCuboard {
     pub window: Window,
     pub node: SceneNode,
@@ -151,7 +122,7 @@ impl VirtualCuboard {
         let mut window = Window::new("cube");
         let mut node = window.add_group();
         let mut components = add_meshes(&make_cube(0.2, 0.02, 0.1), &mut node);
-        set_color(&mut components, 0.0);
+        set_colors_gan(&mut components);
         let eye = Point3::new(Self::INIT_EYE.x, Self::INIT_EYE.y, Self::INIT_EYE.z);
         let camera = ArcBall::new(eye, Point3::default());
         VirtualCuboard {
@@ -174,34 +145,72 @@ impl VirtualCuboard {
     pub fn set_orientation(&mut self, orientation: UnitQuaternion<f32>) {
         self.node.set_local_rotation(orientation);
     }
+}
 
-    pub fn offset_color_by_orientation1(&mut self, orientation: UnitQuaternion<f32>) {
-        let angle = half_angle(orientation).mul(180.0 / PI).rem_euclid(360.0);
-        set_color(&mut self.components, angle);
+// set colors by gancube
+pub fn set_colors_gan(nodes: &mut VirtualCubeNodes) {
+    let colors: [Rgb; 6] = [
+        Hsv::new(240.0, 1.0, 1.0).into_color(),
+        Hsv::new(300.0, 1.0, 1.0).into_color(),
+        Hsv::new(000.0, 0.0, 1.0).into_color(),
+        Hsv::new(120.0, 1.0, 1.0).into_color(),
+        Hsv::new(000.0, 1.0, 1.0).into_color(),
+        Hsv::new(060.0, 1.0, 1.0).into_color(),
+    ];
+    for f in 0..6 {
+        for r in 0..3 {
+            for c in 0..3 {
+                let (face_f, face_b) = &mut nodes[f][r][c];
+                let color = colors[f];
+                face_b.set_color(color.red, color.green, color.blue);
+                face_f.set_color(color.red, color.green, color.blue);
+            }
+        }
+    }
+}
+
+// set colors by hue colormap
+pub fn set_colors_hue(nodes: &mut VirtualCubeNodes, hue_offsets: [f32; 6]) {
+    for f in 0..6 {
+        for r in 0..3 {
+            for c in 0..3 {
+                let (face_f, face_b) = &mut nodes[f][r][c];
+                let hue = (60.0 * (f as f32) + hue_offsets[f]).rem_euclid(360.0);
+                let color: Rgb = Hsv::new(hue, 1.0, 1.0).into_color();
+                face_b.set_color(color.red, color.green, color.blue);
+                face_f.set_color(color.red, color.green, color.blue);
+            }
+        }
+    }
+}
+
+// set colors by global orientation
+pub fn set_colors_ori(nodes: &mut VirtualCubeNodes, orientation: UnitQuaternion<f32>) {
+    fn half_angle(q: UnitQuaternion<f32>) -> f32 {
+        (q.i.powi(2) + q.j.powi(2) + q.k.powi(2)).sqrt().atan2(q.w)
     }
 
-    pub fn offset_color_by_orientation2(&mut self, orientation: UnitQuaternion<f32>) {
-        let eye = self.camera.eye();
-        let eye = Vector3::new(eye.x, eye.y, eye.z).normalize();
-        let angles = core::array::from_fn(|f| {
-            spin_angle(orientation * rotate_to(eye, CENTERS[f]), eye)
-                .mul(180.0 / PI)
-                .rem_euclid(360.0)
-        });
-        set_colors(&mut self.components, angles);
+    let angle = half_angle(orientation).mul(180.0 / PI).rem_euclid(360.0);
+    set_colors_hue(nodes, [angle; 6]);
+}
+
+// set colors by spin angle to the eye
+pub fn set_colors_spin(nodes: &mut VirtualCubeNodes, eye: Point3<f32>, orientation: UnitQuaternion<f32>) {
+    fn rotate_to(v1: Vector3<f32>, v2: Vector3<f32>) -> UnitQuaternion<f32> {
+        let xyz = v1.cross(&v2);
+        let w = (v1.norm_squared() * v2.norm_squared()).sqrt() + v1.dot(&v2);
+        UnitQuaternion::new_normalize(Quaternion::new(w, xyz.x, xyz.y, xyz.z))
     }
-}
 
-fn half_angle(q: UnitQuaternion<f32>) -> f32 {
-    (q.i.powi(2) + q.j.powi(2) + q.k.powi(2)).sqrt().atan2(q.w)
-}
+    fn spin_angle(q: UnitQuaternion<f32>, v: Vector3<f32>) -> f32 {
+        Vector3::new(q.i, q.j, q.k).dot(&v.normalize()).neg().atan2(q.w)
+    }
 
-fn rotate_to(v1: Vector3<f32>, v2: Vector3<f32>) -> UnitQuaternion<f32> {
-    let xyz = v1.cross(&v2);
-    let w = (v1.norm_squared() * v2.norm_squared()).sqrt() + v1.dot(&v2);
-    UnitQuaternion::new_normalize(Quaternion::new(w, xyz.x, xyz.y, xyz.z))
-}
-
-fn spin_angle(q: UnitQuaternion<f32>, v: Vector3<f32>) -> f32 {
-    Vector3::new(q.i, q.j, q.k).dot(&v.normalize()).neg().atan2(q.w)
+    let eye = Vector3::new(eye.x, eye.y, eye.z).normalize();
+    let angles = core::array::from_fn(|f| {
+        spin_angle(orientation * rotate_to(eye, CENTERS[f]), eye)
+            .mul(180.0 / PI)
+            .rem_euclid(360.0)
+    });
+    set_colors_hue(nodes, angles);
 }
