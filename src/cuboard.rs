@@ -297,8 +297,8 @@ impl CuboardInput {
         {
             let orientation =
                 UnitQuaternion::new_normalize(Quaternion::new(q1.0, q1.1, q1.2, q1.3));
-            let torque = Vector3::new(q1p.0, q1p.1, q1p.2);
-            let gesture = self.handler.recognizer.put(orientation, torque);
+            let angular = Vector3::new(q1p.0, q1p.1, q1p.2);
+            let gesture = self.handler.recognizer.put(orientation, angular);
             match gesture {
                 Some(GyroGesture::TurningAround) => {
                     let accept = self.finish();
@@ -336,10 +336,10 @@ impl CuboardInput {
 
 struct GyroGestureRecognizer<const N: usize> {
     orientations: [UnitQuaternion<f32>; N],
-    torques: [Vector3<f32>; N],
+    angulars: [Vector3<f32>; N],
     index: usize,
 
-    shaking_torque: f32,
+    shaking_diversity: f32,
     turning_tolerance: f32,
     debounce: usize,
 }
@@ -355,12 +355,12 @@ impl<const N: usize> GyroGestureRecognizer<N> {
         const SHAKING_TORQUE: f32 = 0.25f32;
         const TOLERANCE: f32 = 0.1;
         let orientation = UnitQuaternion::identity();
-        let torque = Vector3::default();
+        let angular = Vector3::default();
         GyroGestureRecognizer {
             orientations: [orientation; N],
-            torques: [torque; N],
+            angulars: [angular; N],
             index: 0,
-            shaking_torque: SHAKING_TORQUE,
+            shaking_diversity: SHAKING_TORQUE,
             turning_tolerance: TOLERANCE,
             debounce: 0,
         }
@@ -369,10 +369,10 @@ impl<const N: usize> GyroGestureRecognizer<N> {
     fn put(
         &mut self,
         orientation: UnitQuaternion<f32>,
-        torque: Vector3<f32>,
+        angular: Vector3<f32>,
     ) -> Option<GyroGesture> {
         self.orientations[self.index] = orientation;
-        self.torques[self.index] = torque;
+        self.angulars[self.index] = angular;
         self.index = (self.index + 1) % N;
 
         if self.debounce > 0 {
@@ -406,13 +406,13 @@ impl<const N: usize> GyroGestureRecognizer<N> {
     }
 
     fn is_shaking(&self) -> bool {
-        let mean = self.torques.iter().sum::<Vector3<f32>>() / N as f32;
+        let mean = self.angulars.iter().sum::<Vector3<f32>>() / N as f32;
         let var = self
-            .torques
+            .angulars
             .iter()
             .map(|p| (p - mean).norm_squared())
             .sum::<f32>()
             / N as f32;
-        var > self.shaking_torque.powi(2)
+        var > self.shaking_diversity.powi(2)
     }
 }
