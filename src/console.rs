@@ -55,6 +55,10 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         let _ = stdout().flush();
 
         let found = GanCubeV2Builder::find_gancube_device(&adapter).await?;
+        if found.is_empty() {
+            sleep(Duration::from_secs(1)).await;
+            continue;
+        }
 
         println!();
         for builder in found.iter() {
@@ -66,11 +70,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         }
         println!("===================================================");
 
-        if let Some(builder) = found.into_iter().next() {
-            break 'a builder;
-        }
-
-        sleep(Duration::from_secs(1)).await;
+        break 'a found.into_iter().next().unwrap();
     };
     println!();
 
