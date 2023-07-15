@@ -1,2 +1,2 @@
-pub mod virtualcube;
+pub mod virtualcuboard;
 pub mod window;
