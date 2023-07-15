@@ -102,7 +102,7 @@ impl CuboardBuffer {
         self.keys.last().map_or(0, |k| k.1.end) == self.moves.len()
     }
 
-    pub fn finish(&mut self) -> Vec<CuboardKey> {
+    pub fn flush(&mut self) -> Vec<CuboardKey> {
         let chunk_end = self.keys.last().map_or(0, |k| k.1.end);
         let res = self.keys.drain(..).map(|k| k.0).collect();
         self.moves.drain(..chunk_end);
@@ -176,6 +176,10 @@ const BUFFER_SIZE: usize = 20;
 pub struct CuboardInput {
     pub buffer: CuboardBuffer,
     pub keymap: CuboardKeymap,
+    handler: CuboardInputMessageHandler,
+}
+
+pub struct CuboardInputMessageHandler {
     count: Option<u8>,
     recognizer: GyroGestureRecognizer<BUFFER_SIZE>,
 }
@@ -213,14 +217,13 @@ pub const DEFAULT_KEYMAP: CuboardKeymap = [
     ],
 ];
 
-#[derive(Clone, Copy)]
-pub enum CuboardInputState {
+#[derive(Clone)]
+pub enum CuboardInputEvent {
     Uninit,
     Init,
-    None,
     Cancel,
-    Enter,
-    Input { accept: usize, skip: usize },
+    Finish(String),
+    Input { accept: String, skip: usize },
 }
 
 impl CuboardInput {
@@ -228,17 +231,19 @@ impl CuboardInput {
         CuboardInput {
             buffer: CuboardBuffer::new(),
             keymap,
-            count: None,
-            recognizer: GyroGestureRecognizer::new(),
+            handler: CuboardInputMessageHandler {
+                count: None,
+                recognizer: GyroGestureRecognizer::new(),
+            },
         }
     }
 
-    pub fn text(&self) -> String {
+    pub fn buffered_text(&self) -> String {
         self.buffer
             .keys()
             .iter()
             .map(|k| self.keymap[k.0.is_shifted as usize][k.0.main as u8 as usize][k.0.num])
-            .collect()
+            .collect::<String>()
     }
 
     pub fn complete_part(&self) -> String {
@@ -251,46 +256,81 @@ impl CuboardInput {
         format_moves(self.buffer.remains())
     }
 
-    pub fn handle_message(&mut self, msg: ResponseMessage) -> CuboardInputState {
+    pub fn cancel(&mut self) {
+        self.buffer.cancel();
+    }
+
+    pub fn finish(&mut self) -> String {
+        let accepted_text = self.buffered_text();
+        self.buffer.cancel();
+        accepted_text
+    }
+
+    pub fn input(&mut self, mvs: &[CubeMove]) -> String {
+        let mut res = String::new();
+        for mv in mvs {
+            self.buffer.input(*mv);
+            if self.buffered_text().contains('\n') {
+                res += &self.finish();
+            }
+        }
+        res
+    }
+
+    pub fn handle_message(&mut self, msg: ResponseMessage) -> Option<CuboardInputEvent> {
         // ignore messages until the current count is known
-        if self.count.is_none() {
+        if self.handler.count.is_none() {
             if let ResponseMessage::State { count, state: _ } = msg {
-                self.count = Some(count);
-                return CuboardInputState::Init;
+                self.handler.count = Some(count);
+                return Some(CuboardInputEvent::Init);
             } else {
-                return CuboardInputState::Uninit;
+                return Some(CuboardInputEvent::Uninit);
             }
         }
 
-        if let ResponseMessage::Gyroscope { q1, q1p, q2: _, q2p: _ } = msg {
-            let orientation = UnitQuaternion::new_normalize(Quaternion::new(q1.0, q1.1, q1.2, q1.3));
+        if let ResponseMessage::Gyroscope {
+            q1,
+            q1p,
+            q2: _,
+            q2p: _,
+        } = msg
+        {
+            let orientation =
+                UnitQuaternion::new_normalize(Quaternion::new(q1.0, q1.1, q1.2, q1.3));
             let torque = Vector3::new(q1p.0, q1p.1, q1p.2);
-            let gesture = self.recognizer.put(orientation, torque);
+            let gesture = self.handler.recognizer.put(orientation, torque);
             match gesture {
-                Some(GyroGesture::TurningAround) => return CuboardInputState::Enter,
-                Some(GyroGesture::Shaking) => return CuboardInputState::Cancel,
+                Some(GyroGesture::TurningAround) => {
+                    let accept = self.finish();
+                    return Some(CuboardInputEvent::Finish(accept));
+                }
+                Some(GyroGesture::Shaking) => {
+                    self.cancel();
+                    return Some(CuboardInputEvent::Cancel);
+                }
                 _ => {}
             }
         }
 
         let ResponseMessage::Moves { count, moves, times: _ } = msg else {
-            return CuboardInputState::None;
+            return None;
         };
 
-        let prev_count = self.count.unwrap();
-        self.count = Some(count);
+        let prev_count = self.handler.count.unwrap();
+        self.handler.count = Some(count);
 
         let diff = count.wrapping_sub(prev_count) as usize;
+        let mut skip = 7usize.saturating_sub(diff);
+        let mut accept_moves = vec![];
         for &mv in moves[..diff.clamp(0, 7)].iter().rev() {
             if let Some(mv) = mv {
-                self.buffer.input(mv);
+                accept_moves.push(mv);
+            } else {
+                skip += 1;
             }
         }
-
-        CuboardInputState::Input {
-            accept: diff.clamp(0, 7),
-            skip: 7usize.saturating_sub(diff),
-        }
+        let accept = self.input(&accept_moves);
+        Some(CuboardInputEvent::Input { accept, skip })
     }
 }
 
@@ -298,7 +338,7 @@ struct GyroGestureRecognizer<const N: usize> {
     orientations: [UnitQuaternion<f32>; N],
     torques: [Vector3<f32>; N],
     index: usize,
-    
+
     shaking_torque: f32,
     turning_tolerance: f32,
     debounce: usize,
@@ -326,7 +366,11 @@ impl<const N: usize> GyroGestureRecognizer<N> {
         }
     }
 
-    fn put(&mut self, orientation: UnitQuaternion<f32>, torque: Vector3<f32>) -> Option<GyroGesture> {
+    fn put(
+        &mut self,
+        orientation: UnitQuaternion<f32>,
+        torque: Vector3<f32>,
+    ) -> Option<GyroGesture> {
         self.orientations[self.index] = orientation;
         self.torques[self.index] = torque;
         self.index = (self.index + 1) % N;
@@ -363,7 +407,12 @@ impl<const N: usize> GyroGestureRecognizer<N> {
 
     fn is_shaking(&self) -> bool {
         let mean = self.torques.iter().sum::<Vector3<f32>>() / N as f32;
-        let var = self.torques.iter().map(|p| (p - mean).norm_squared()).sum::<f32>() / N as f32;
+        let var = self
+            .torques
+            .iter()
+            .map(|p| (p - mean).norm_squared())
+            .sum::<f32>()
+            / N as f32;
         var > self.shaking_torque.powi(2)
     }
 }

@@ -1,9 +1,10 @@
-use crate::cuboard::{CuboardInputState, CuboardKeymap};
+use crate::cuboard::{CuboardInputEvent, CuboardKeymap};
 use btleplug::api::{Central, Manager, ScanFilter};
 use btleplug::platform;
 use std::error::Error;
 use std::fs::File;
 use std::io::{stdout, BufRead, BufReader, Write};
+use std::iter::repeat;
 use std::ops::Range;
 use tokio::time::{sleep, Duration};
 
@@ -162,12 +163,17 @@ fn make_cheatsheet(keymap: &CuboardKeymap) -> String {
 
 struct CuboardInputPrinter<F: Write> {
     terminal: F,
+    accepted_text: String,
     input: CuboardInput,
 }
 
 impl<F: Write> CuboardInputPrinter<F> {
     fn new(terminal: F, input: CuboardInput) -> Self {
-        CuboardInputPrinter { terminal, input }
+        CuboardInputPrinter {
+            terminal,
+            accepted_text: String::new(),
+            input,
+        }
     }
 
     fn handle_message(&mut self, msg: ResponseMessage) {
@@ -177,31 +183,40 @@ impl<F: Write> CuboardInputPrinter<F> {
         }
 
         match self.input.handle_message(msg) {
-            CuboardInputState::Uninit => {}
-            CuboardInputState::Init => {
+            Some(CuboardInputEvent::Uninit) => {
+                return;
+            }
+            Some(CuboardInputEvent::Init) => {
                 let _ = write!(self.terminal, "\r\x1b[7m \x1b[m\n\x1b[100m\x1b[2K\x1b[m");
                 let _ = self.terminal.flush();
+                return;
             }
-            CuboardInputState::Cancel => {
+            None => {}
+            Some(CuboardInputEvent::Cancel) => {
+                self.input.cancel();
             }
-            CuboardInputState::Enter => {
-            }
-            CuboardInputState::None | CuboardInputState::Input { accept: _, skip: _ } => {
-                let text = self.input.text();
-                let _ = write!(
-                    self.terminal,
-                    "\x1b[A\r\x1b[2K{}\x1b[K\x1b[0;7m \x1b[m\n",
-                    text
-                );
-
-                if text.contains('\n') {
-                    assert!(!text[..text.len() - 1].contains('\n'));
-                    self.input.buffer.finish();
-                }
-
-                show_input_prompt(&mut self.terminal, &self.input, Self::INPUT_PROMPT_WIDTH);
+            Some(CuboardInputEvent::Finish(accept))
+            | Some(CuboardInputEvent::Input { accept, skip: _ }) => {
+                self.accepted_text += &accept;
             }
         }
+
+        let buffered_text = self.input.buffered_text();
+        let _ = write!(
+            self.terminal,
+            "\x1b[A\r\x1b[2K{}\x1b[4m{}\x1b[m\x1b[K\x1b[0;7m \x1b[m\n",
+            self.accepted_text, buffered_text
+        );
+
+        if buffered_text.contains('\n') {
+            self.accepted_text += &self.input.finish();
+        }
+
+        if let Some(i) = self.accepted_text.rfind('\n') {
+            self.accepted_text.drain(0..=i);
+        }
+
+        show_input_prompt(&mut self.terminal, &self.input, Self::INPUT_PROMPT_WIDTH);
     }
 
     const INPUT_PROMPT_WIDTH: usize = 12;
@@ -238,20 +253,22 @@ fn show_input_prompt<F: Write>(terminal: &mut F, input: &CuboardInput, width: us
 
 struct CuboardInputTrainer<F: Write, T: Iterator<Item = String>> {
     terminal: F,
+    accepted_text: String,
     input: CuboardInput,
-    text: T,
+    textgen: T,
     lines: Box<[String]>,
 }
 
 impl<F: Write, T: Iterator<Item = String>> CuboardInputTrainer<F, T> {
-    fn new(terminal: F, input: CuboardInput, mut text: T, margin: usize) -> Self {
+    fn new(terminal: F, input: CuboardInput, mut textgen: T, margin: usize) -> Self {
         let lines = (0..margin)
-            .map(|_| text.next().unwrap_or_default())
+            .map(|_| textgen.next().unwrap_or_default())
             .collect();
         CuboardInputTrainer {
             terminal,
+            accepted_text: String::new(),
             input,
-            text,
+            textgen,
             lines,
         }
     }
@@ -263,8 +280,10 @@ impl<F: Write, T: Iterator<Item = String>> CuboardInputTrainer<F, T> {
         }
 
         match self.input.handle_message(msg) {
-            CuboardInputState::Uninit => {}
-            CuboardInputState::Init => {
+            Some(CuboardInputEvent::Uninit) => {
+                return;
+            }
+            Some(CuboardInputEvent::Init) => {
                 let cursor = self.lines[0].chars().next().unwrap_or(' ');
                 let _ = write!(self.terminal, "\x1b[2m{}\x1b[m", self.lines[0]);
                 let _ = write!(self.terminal, "\r\x1b[7m{}\x1b[m\n", cursor);
@@ -273,22 +292,32 @@ impl<F: Write, T: Iterator<Item = String>> CuboardInputTrainer<F, T> {
                 }
                 let _ = write!(self.terminal, "\r\x1b[100m\x1b[2K \x1b[m\r");
                 let _ = self.terminal.flush();
+                return;
             }
-            CuboardInputState::Cancel => {
+            None => {}
+            Some(CuboardInputEvent::Cancel) => {
+                self.input.cancel();
             }
-            CuboardInputState::Enter => {
+            Some(CuboardInputEvent::Finish(accept))
+            | Some(CuboardInputEvent::Input { accept, skip: _ }) => {
+                self.accepted_text += &accept;
             }
-            CuboardInputState::None | CuboardInputState::Input { accept: _, skip: _ } => {
-                let _ = write!(self.terminal, "\x1b[{}A", self.lines.len());
-                for line in self.lines.iter() {
-                    let _ = writeln!(self.terminal, "\r\x1b[2m\x1b[2K{}\x1b[m", line);
-                }
+        }
 
-                let text = self.input.text();
-                let decoreated_text: String = text
-                    .trim_end_matches('\n')
+        let _ = write!(self.terminal, "\x1b[{}A", self.lines.len());
+        for line in self.lines.iter() {
+            let _ = writeln!(self.terminal, "\r\x1b[2m\x1b[2K{}\x1b[m", line);
+        }
+
+        let buffered_text = self.input.buffered_text();
+        let text = self.accepted_text.clone() + &buffered_text;
+        let decorated_texts = text
+            .split('\n')
+            .zip(self.lines.iter().chain(repeat(&String::new())))
+            .map(|(input, expect)| {
+                input
                     .chars()
-                    .zip(self.lines[0].chars().chain([' '].into_iter().cycle()))
+                    .zip(expect.chars().chain(repeat(' ')))
                     .map(|(a, b)| {
                         if a == b {
                             format!("{}", a)
@@ -296,42 +325,46 @@ impl<F: Write, T: Iterator<Item = String>> CuboardInputTrainer<F, T> {
                             format!("\x1b[41m{}\x1b[m", a)
                         }
                     })
-                    .collect();
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>();
 
-                let _ = write!(self.terminal, "\x1b[{}A", self.lines.len());
-                if text.contains('\n') {
-                    let cursor = self.lines[1].chars().next().unwrap_or(' ');
-                    let _ = write!(
-                        self.terminal,
-                        "\r{}\n\x1b[7m{}\x1b[m",
-                        decoreated_text, cursor
-                    );
-                } else {
-                    let cursor = self.lines[0].chars().nth(text.len()).unwrap_or(' ');
-                    let _ = write!(
-                        self.terminal,
-                        "\r{}\x1b[7m{}\x1b[m\n",
-                        decoreated_text, cursor
-                    );
-                }
-                let _ = write!(self.terminal, "\x1b[{}B\r", self.lines.len() - 1);
-
-                if text.contains('\n') {
-                    assert!(!text[..text.len() - 1].contains('\n'));
-                    let new_line = self.text.next().unwrap_or_default();
-                    let _ = write!(
-                        self.terminal,
-                        "\r\x1b[m\x1b[2K\r\x1b[2m{}\x1b[m\n",
-                        new_line
-                    );
-                    self.input.buffer.finish();
-                    self.lines.rotate_left(1);
-                    self.lines[self.lines.len() - 1] = new_line;
-                }
-
-                show_input_prompt(&mut self.terminal, &self.input, Self::INPUT_PROMPT_WIDTH);
-            }
+        let _ = write!(self.terminal, "\x1b[{}A", self.lines.len());
+        for decorated_text in decorated_texts[..decorated_texts.len() - 1].iter() {
+            let _ = write!(self.terminal, "\r{}\n", decorated_text);
         }
+        let last_decorated_text = decorated_texts.last().unwrap();
+        let char_on_cursor = self.lines[decorated_texts.len() - 1]
+            .chars()
+            .nth(text.split('\n').last().unwrap().len())
+            .unwrap_or(' ');
+        let _ = write!(
+            self.terminal,
+            "\r{}\x1b[7m{}\x1b[m\n",
+            last_decorated_text, char_on_cursor
+        );
+        let _ = write!(
+            self.terminal,
+            "\x1b[{}B\r",
+            self.lines.len() - decorated_texts.len()
+        );
+
+        for _ in 0..decorated_texts.len() - 1 {
+            let new_line = self.textgen.next().unwrap_or_default();
+            let _ = write!(
+                self.terminal,
+                "\r\x1b[m\x1b[2K\r\x1b[2m{}\x1b[m\n",
+                new_line
+            );
+            self.lines.rotate_left(1);
+            *self.lines.last_mut().unwrap() = new_line;
+        }
+
+        if let Some(i) = self.accepted_text.rfind('\n') {
+            self.accepted_text.drain(0..=i);
+        }
+
+        show_input_prompt(&mut self.terminal, &self.input, Self::INPUT_PROMPT_WIDTH);
     }
 
     const INPUT_PROMPT_WIDTH: usize = 12;
