@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 
-use std::ops::Range;
+use std::{f32::consts::PI, ops::Range};
+
+use kiss3d::nalgebra::{Quaternion, UnitQuaternion, Vector3};
 
 use crate::{
     bluetooth::gancubev2::ResponseMessage,
@@ -169,10 +171,13 @@ impl CuboardBuffer {
     }
 }
 
+const BUFFER_SIZE: usize = 20;
+
 pub struct CuboardInput {
     pub buffer: CuboardBuffer,
     pub keymap: CuboardKeymap,
     count: Option<u8>,
+    recognizer: GyroGestureRecognizer<BUFFER_SIZE>,
 }
 
 pub type CuboardKeymap = [[[&'static str; 4]; 12]; 2];
@@ -213,6 +218,8 @@ pub enum CuboardInputState {
     Uninit,
     Init,
     None,
+    Cancel,
+    Enter,
     Input { accept: usize, skip: usize },
 }
 
@@ -222,6 +229,7 @@ impl CuboardInput {
             buffer: CuboardBuffer::new(),
             keymap,
             count: None,
+            recognizer: GyroGestureRecognizer::new(),
         }
     }
 
@@ -254,6 +262,17 @@ impl CuboardInput {
             }
         }
 
+        if let ResponseMessage::Gyroscope { q1, q1p, q2: _, q2p: _ } = msg {
+            let orientation = UnitQuaternion::new_normalize(Quaternion::new(q1.0, q1.1, q1.2, q1.3));
+            let torque = Vector3::new(q1p.0, q1p.1, q1p.2);
+            let gesture = self.recognizer.put(orientation, torque);
+            match gesture {
+                Some(GyroGesture::TurningAround) => return CuboardInputState::Enter,
+                Some(GyroGesture::Shaking) => return CuboardInputState::Cancel,
+                _ => {}
+            }
+        }
+
         let ResponseMessage::Moves { count, moves, times: _ } = msg else {
             return CuboardInputState::None;
         };
@@ -268,6 +287,83 @@ impl CuboardInput {
             }
         }
 
-        CuboardInputState::Input { accept: diff.clamp(0, 7), skip: 7usize.saturating_sub(diff) }
+        CuboardInputState::Input {
+            accept: diff.clamp(0, 7),
+            skip: 7usize.saturating_sub(diff),
+        }
+    }
+}
+
+struct GyroGestureRecognizer<const N: usize> {
+    orientations: [UnitQuaternion<f32>; N],
+    torques: [Vector3<f32>; N],
+    index: usize,
+    
+    shaking_torque: f32,
+    turning_tolerance: f32,
+    debounce: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum GyroGesture {
+    TurningAround,
+    Shaking,
+}
+
+impl<const N: usize> GyroGestureRecognizer<N> {
+    fn new() -> Self {
+        const SHAKING_TORQUE: f32 = 0.25f32;
+        const TOLERANCE: f32 = 0.1;
+        let orientation = UnitQuaternion::identity();
+        let torque = Vector3::default();
+        GyroGestureRecognizer {
+            orientations: [orientation; N],
+            torques: [torque; N],
+            index: 0,
+            shaking_torque: SHAKING_TORQUE,
+            turning_tolerance: TOLERANCE,
+            debounce: 0,
+        }
+    }
+
+    fn put(&mut self, orientation: UnitQuaternion<f32>, torque: Vector3<f32>) -> Option<GyroGesture> {
+        self.orientations[self.index] = orientation;
+        self.torques[self.index] = torque;
+        self.index = (self.index + 1) % N;
+
+        if self.debounce > 0 {
+            self.debounce -= 1;
+            return None;
+        }
+
+        if self.is_turning_around() {
+            self.debounce = N;
+            return Some(GyroGesture::TurningAround);
+        }
+
+        if self.is_shaking() {
+            self.debounce = N;
+            return Some(GyroGesture::Shaking);
+        }
+
+        None
+    }
+
+    fn is_turning_around(&self) -> bool {
+        fn half_angle(q: UnitQuaternion<f32>) -> f32 {
+            (q.i.powi(2) + q.j.powi(2) + q.k.powi(2)).sqrt().atan2(q.w)
+        }
+
+        let first_ori = self.orientations[self.index];
+        let last_ori = self.orientations[(self.index + N - 1) % N];
+        let angle = half_angle(last_ori * first_ori.conjugate()) * 2.0;
+
+        (angle / (2.0 * PI) - 1.0).abs() < self.turning_tolerance
+    }
+
+    fn is_shaking(&self) -> bool {
+        let mean = self.torques.iter().sum::<Vector3<f32>>() / N as f32;
+        let var = self.torques.iter().map(|p| (p - mean).norm_squared()).sum::<f32>() / N as f32;
+        var > self.shaking_torque.powi(2)
     }
 }

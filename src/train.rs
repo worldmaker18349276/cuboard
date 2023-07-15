@@ -182,6 +182,10 @@ impl<F: Write> CuboardInputPrinter<F> {
                 let _ = write!(self.terminal, "\r\x1b[7m \x1b[m\n\x1b[100m\x1b[2K\x1b[m");
                 let _ = self.terminal.flush();
             }
+            CuboardInputState::Cancel => {
+            }
+            CuboardInputState::Enter => {
+            }
             CuboardInputState::None | CuboardInputState::Input { accept: _, skip: _ } => {
                 let text = self.input.text();
                 let _ = write!(
@@ -269,6 +273,10 @@ impl<F: Write, T: Iterator<Item = String>> CuboardInputTrainer<F, T> {
                 }
                 let _ = write!(self.terminal, "\r\x1b[100m\x1b[2K \x1b[m\r");
                 let _ = self.terminal.flush();
+            }
+            CuboardInputState::Cancel => {
+            }
+            CuboardInputState::Enter => {
             }
             CuboardInputState::None | CuboardInputState::Input { accept: _, skip: _ } => {
                 let _ = write!(self.terminal, "\x1b[{}A", self.lines.len());
