@@ -1,9 +1,19 @@
-use std::{io::{Read, Write, stdout}, error::Error, time::Duration};
+use std::{
+    error::Error,
+    io::{stdout, Read, Write},
+    time::{Duration, Instant},
+};
 
-use btleplug::{platform, api::{Manager, Central, ScanFilter, Peripheral}};
+use btleplug::{
+    api::{Central, Manager, Peripheral, ScanFilter},
+    platform,
+};
 use tokio::time::sleep;
 
-use crate::{bluetooth::gancubev2::{GanCubeV2Builder, ResponseMessage}, cube::CubeState};
+use crate::{
+    bluetooth::gancubev2::{GanCubeV2Builder, ResponseMessage},
+    cube::CubeState,
+};
 
 fn direct_input_mode() -> impl Drop {
     use defer::defer;
@@ -87,7 +97,10 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     // println!("  4: unkown characteristic 4");
     // println!();
 
-    gancube.register_handler(Box::new(handle_message)).await?;
+    let mut handler = ConsoleMessageHandler::new();
+    gancube
+        .register_handler(Box::new(move |msg| handler.handle_message(msg)))
+        .await?;
     gancube.subscribe_response().await?;
     let mut is_subscribed = true;
     loop {
@@ -177,87 +190,120 @@ fn draw_bar(value: f32, width: usize) -> String {
         .collect()
 }
 
-fn handle_message(message: ResponseMessage) {
-    const BAR_WIDTH: usize = 12;
-    const PBAR_WIDTH: usize = 2;
+struct ConsoleMessageHandler {
+    prev_time: Instant,
+}
 
-    match message {
-        ResponseMessage::Gyroscope { q1, q1p, q2, q2p } => {
-            print!("{}<!> gyroscope: ", CREL);
-            let abar = draw_bar((q1.0 + 1.0) / 2.0, BAR_WIDTH);
-            let bbar = draw_bar((q1.1 + 1.0) / 2.0, BAR_WIDTH);
-            let cbar = draw_bar((q1.2 + 1.0) / 2.0, BAR_WIDTH);
-            let dbar = draw_bar((q1.3 + 1.0) / 2.0, BAR_WIDTH);
-            let bpbar = draw_bar((q1p.0 + 1.0) / 2.0, PBAR_WIDTH);
-            let cpbar = draw_bar((q1p.1 + 1.0) / 2.0, PBAR_WIDTH);
-            let dpbar = draw_bar((q1p.2 + 1.0) / 2.0, PBAR_WIDTH);
-            print!(
-                "q=[\x1b[2m{}\x1b[0;31m{}\x1b[34m{}\x1b[37m{}\x1b[m], ",
-                abar, bbar, cbar, dbar
-            );
-            print!(
-                "q'=[\x1b[31m{}\x1b[34m{}\x1b[37m{}\x1b[m]",
-                bpbar, cpbar, dpbar
-            );
-            print!(" ; ");
+impl ConsoleMessageHandler {
+    fn new() -> Self {
+        ConsoleMessageHandler {
+            prev_time: Instant::now(),
+        }
+    }
 
-            let abar_ = draw_bar((q2.0 + 1.0) / 2.0, BAR_WIDTH);
-            let bbar_ = draw_bar((q2.1 + 1.0) / 2.0, BAR_WIDTH);
-            let cbar_ = draw_bar((q2.2 + 1.0) / 2.0, BAR_WIDTH);
-            let dbar_ = draw_bar((q2.3 + 1.0) / 2.0, BAR_WIDTH);
-            let bpbar_ = draw_bar((q2p.0 + 1.0) / 2.0, PBAR_WIDTH);
-            let cpbar_ = draw_bar((q2p.1 + 1.0) / 2.0, PBAR_WIDTH);
-            let dpbar_ = draw_bar((q2p.2 + 1.0) / 2.0, PBAR_WIDTH);
-            print!(
-                "q=[\x1b[2m{}\x1b[0;31m{}\x1b[34m{}\x1b[37m{}\x1b[m], ",
-                abar_, bbar_, cbar_, dbar_
-            );
-            print!(
-                "q'=[\x1b[31m{}\x1b[34m{}\x1b[37m{}\x1b[m]",
-                bpbar_, cpbar_, dpbar_
-            );
-            let _ = std::io::stdout().flush();
-        }
-        ResponseMessage::Moves { count, moves, times } => {
-            print!("{}<!> ", CREL);
-            print!("count={:3}, ", count);
-            print!("({}) ", times[0].as_millis());
-            for mv in moves {
-                print!("{} ", mv.map_or("??".to_owned(), |m| m.to_string()));
-            }
-            println!();
-            
-        }
-        ResponseMessage::State { count, state } => {
-            print!("{}<!> ", CREL);
-            print!("count={:3}, ", count);
-            if let Some(CubeState { corners, edges, centers: _ }) = state {
+    fn ping(&mut self) -> Duration {
+        let time = Instant::now();
+        let duration = time - self.prev_time;
+        self.prev_time = time;
+        duration
+    }
+
+    fn handle_message(&mut self, message: ResponseMessage) {
+        const BAR_WIDTH: usize = 12;
+        const PBAR_WIDTH: usize = 2;
+
+        match message {
+            ResponseMessage::Gyroscope { q1, q1p, q2, q2p } => {
+                let duration = self.ping().as_secs_f32();
+
+                print!("{}<!> gyroscope: ", CREL);
+                let abar = draw_bar((q1.0 + 1.0) / 2.0, BAR_WIDTH);
+                let bbar = draw_bar((q1.1 + 1.0) / 2.0, BAR_WIDTH);
+                let cbar = draw_bar((q1.2 + 1.0) / 2.0, BAR_WIDTH);
+                let dbar = draw_bar((q1.3 + 1.0) / 2.0, BAR_WIDTH);
+                let bpbar = draw_bar((q1p.0 + 1.0) / 2.0, PBAR_WIDTH);
+                let cpbar = draw_bar((q1p.1 + 1.0) / 2.0, PBAR_WIDTH);
+                let dpbar = draw_bar((q1p.2 + 1.0) / 2.0, PBAR_WIDTH);
                 print!(
-                    "corners={:X?} / {:X?}, ",
-                    corners.map(|c| c.0.repr()),
-                    corners.map(|c| c.1.repr()),
+                    "q=[\x1b[2m{}\x1b[0;31m{}\x1b[34m{}\x1b[37m{}\x1b[m], ",
+                    abar, bbar, cbar, dbar
                 );
                 print!(
-                    "edges={:X?} / {:X?}, ",
-                    edges.map(|e| e.0.repr()),
-                    edges.map(|e| e.1.repr()),
+                    "q'=[\x1b[31m{}\x1b[34m{}\x1b[37m{}\x1b[m]",
+                    bpbar, cpbar, dpbar
                 );
-            } else {
-                print!("<unknown state>");
+                print!(" ; ");
+
+                let abar_ = draw_bar((q2.0 + 1.0) / 2.0, BAR_WIDTH);
+                let bbar_ = draw_bar((q2.1 + 1.0) / 2.0, BAR_WIDTH);
+                let cbar_ = draw_bar((q2.2 + 1.0) / 2.0, BAR_WIDTH);
+                let dbar_ = draw_bar((q2.3 + 1.0) / 2.0, BAR_WIDTH);
+                let bpbar_ = draw_bar((q2p.0 + 1.0) / 2.0, PBAR_WIDTH);
+                let cpbar_ = draw_bar((q2p.1 + 1.0) / 2.0, PBAR_WIDTH);
+                let dpbar_ = draw_bar((q2p.2 + 1.0) / 2.0, PBAR_WIDTH);
+                print!(
+                    "q=[\x1b[2m{}\x1b[0;31m{}\x1b[34m{}\x1b[37m{}\x1b[m], ",
+                    abar_, bbar_, cbar_, dbar_
+                );
+                print!(
+                    "q'=[\x1b[31m{}\x1b[34m{}\x1b[37m{}\x1b[m] ",
+                    bpbar_, cpbar_, dpbar_
+                );
+                print!("({:0.3}s)", duration);
+                let _ = std::io::stdout().flush();
             }
-            println!();
-        }
-        ResponseMessage::Battery { charging, percentage } => {
-            print!("{}<!> ", CREL);
-            print!("battery={}%", percentage);
-            if charging {
-                print!(" (charging)");
+            ResponseMessage::Moves {
+                count,
+                moves,
+                times,
+            } => {
+                print!("{}<!> ", CREL);
+                print!("count={:3}, ", count);
+                print!("({}) ", times[0].as_millis());
+                for mv in moves {
+                    print!("{} ", mv.map_or("??".to_owned(), |m| m.to_string()));
+                }
+                println!();
             }
-            println!();
+            ResponseMessage::State { count, state } => {
+                print!("{}<!> ", CREL);
+                print!("count={:3}, ", count);
+                if let Some(CubeState {
+                    corners,
+                    edges,
+                    centers: _,
+                }) = state
+                {
+                    print!(
+                        "corners={:X?} / {:X?}, ",
+                        corners.map(|c| c.0.repr()),
+                        corners.map(|c| c.1.repr()),
+                    );
+                    print!(
+                        "edges={:X?} / {:X?}, ",
+                        edges.map(|e| e.0.repr()),
+                        edges.map(|e| e.1.repr()),
+                    );
+                } else {
+                    print!("<unknown state>");
+                }
+                println!();
+            }
+            ResponseMessage::Battery {
+                charging,
+                percentage,
+            } => {
+                print!("{}<!> ", CREL);
+                print!("battery={}%", percentage);
+                if charging {
+                    print!(" (charging)");
+                }
+                println!();
+            }
+            ResponseMessage::Disconnect => {
+                print!("{}<!> ", CREL);
+                println!("cube auto-disconnect");
+            }
         }
-        ResponseMessage::Disconnect => {
-            print!("{}<!> ", CREL);
-            println!("cube auto-disconnect");
-        }
-    }    
+    }
 }
