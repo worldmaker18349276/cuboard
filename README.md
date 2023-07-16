@@ -20,13 +20,13 @@ cargo build --release
 Run:
 
 ```
-./target/release/cuboard
+./target/release/cuboard train
 ```
 
-Pass the filename as an argument for the typing exercise:
+Feed a text file for the typing exercise:
 
 ```
-./target/release/cuboard README.md
+./target/release/cuboard train README.md
 ```
 
 Note that line breaks should be done manually, otherwise the output will be messed up.
